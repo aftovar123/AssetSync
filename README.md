@@ -28,7 +28,20 @@ tests/
 Regla de dependencia: `Domain` no conoce nada externo. `Application` define
 interfaces (`IWorkOrderRepository`, `IOutboxRepository`, `IExternalErpClient`,
 `INotificationService`) que `Infrastructure` implementa. `Api` es la raíz de
-composición — solo conecta piezas, no contiene lógica de negocio.
+composición — solo conecta piezas, no contiene lógica de negocio. Verificado
+mirando las referencias reales de cada `.csproj`, no solo el nombre de la
+carpeta:
+
+```mermaid
+flowchart LR
+    Api["AssetSync.Api<br/><small>composición: DI, endpoints REST</small>"] --> Infra
+    Infra["AssetSync.Infrastructure<br/><small>EF Core, Polly, BackgroundService</small>"] --> App
+    App["AssetSync.Application<br/><small>comandos MediatR, contratos</small>"] --> Dom
+    Dom["AssetSync.Domain<br/><small>entidades, reglas, IClock</small>"]
+```
+
+Las flechas apuntan siempre hacia adentro. `Domain` no tiene ni una sola
+referencia — ni de paquete ni de proyecto.
 
 ## El problema real: sincronizar sin perder nada
 
@@ -68,6 +81,43 @@ mismo como `Failed`** (una regla del propio dominio, no una consulta
 implícita) y deja de aparecer en el sondeo — evita reintentar para siempre
 algo que claramente no va a funcionar, y queda visible para revisión manual
 en vez de desaparecer en silencio.
+
+```mermaid
+sequenceDiagram
+    actor Client
+    participant Api
+    participant DB as SQL Server
+    participant Processor as OutboxProcessor
+    participant Sync as SyncWorkOrderCommand
+    participant Erp as ResilientErpClient (Polly)
+    participant Ext as Sistema externo (SAP-like)
+
+    Client->>Api: POST /work-orders/{id}/complete
+    Api->>DB: WorkOrder → Completed<br/>+ OutboxMessage → Pending
+    Note over DB: Una sola llamada a SaveChanges,<br/>una sola transacción
+    Api-->>Client: 202 Accepted
+
+    rect rgb(240, 240, 250)
+    Note over Processor: cada 10s, sin depender de ninguna petición HTTP
+    Processor->>DB: busca OutboxMessages Pending
+    Processor->>Sync: SyncWorkOrderCommand(workOrderId)
+    Sync->>Erp: SubmitWorkOrderAsync(workOrder, submissionCode)
+    Erp->>Ext: intento 1
+    Ext-->>Erp: falla transitoria
+    Erp->>Ext: intento 2 (backoff exponencial + jitter)
+    Ext-->>Erp: éxito
+    Erp-->>Sync: ok
+    Sync->>DB: WorkOrder.IsSynced = true<br/>IntegrationLog(Sent=true, submissionCode)
+    Sync-->>Processor: SyncWorkOrderResult(Success)
+    Processor->>DB: OutboxMessage.MarkProcessed()
+    end
+```
+
+El punto clave del diagrama: la petición HTTP termina en el primer bloque,
+antes de que exista ninguna garantía de que la sincronización funcionó. Todo
+lo que puede fallar — la llamada externa, sus reintentos, el resultado final
+— pasa después, de forma independiente, y sobrevive a un reinicio del
+proceso porque ya quedó escrito en la base de datos desde el primer paso.
 
 ## Reloj inyectable
 
