@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AssetSync.Api/AssetSync.Api.csproj" />
+    <Project Path="src/AssetSync.Application/AssetSync.Application.csproj" />
+    <Project Path="src/AssetSync.Domain/AssetSync.Domain.csproj" />
+    <Project Path="src/AssetSync.Infrastructure/AssetSync.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AssetSync.Tests/AssetSync.Tests.csproj" />
+  </Folder>
+</Solution>
