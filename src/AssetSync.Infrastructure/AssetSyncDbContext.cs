@@ -8,6 +8,8 @@ public class AssetSyncDbContext(DbContextOptions<AssetSyncDbContext> options) : 
     public DbSet<Asset> Assets => Set<Asset>();
     public DbSet<WorkOrder> WorkOrders => Set<WorkOrder>();
     public DbSet<MaintenanceRecord> MaintenanceRecords => Set<MaintenanceRecord>();
+    public DbSet<IntegrationLog> IntegrationLogs => Set<IntegrationLog>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,6 +30,21 @@ public class AssetSyncDbContext(DbContextOptions<AssetSyncDbContext> options) : 
         modelBuilder.Entity<MaintenanceRecord>(e =>
         {
             e.Property(m => m.Notes).HasMaxLength(1000);
+            e.HasOne<WorkOrder>().WithMany().HasForeignKey(m => m.WorkOrderId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<IntegrationLog>(e =>
+        {
+            e.Property(l => l.SubmissionCode).HasMaxLength(64);
+            e.HasIndex(l => l.SubmissionCode);
+            e.Property(l => l.ErrorMessage).HasMaxLength(2000);
+            e.HasOne<WorkOrder>().WithMany().HasForeignKey(l => l.WorkOrderId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OutboxMessage>(e =>
+        {
+            e.Property(m => m.LastError).HasMaxLength(2000);
+            e.HasIndex(m => new { m.ProcessedAt, m.Attempts });
             e.HasOne<WorkOrder>().WithMany().HasForeignKey(m => m.WorkOrderId).OnDelete(DeleteBehavior.Cascade);
         });
     }

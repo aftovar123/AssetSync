@@ -4,6 +4,7 @@ using AssetSync.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AssetSync.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AssetSyncDbContext))]
-    partial class AssetSyncDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922131736_AddIntegrationLogging")]
+    partial class AddIntegrationLogging
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -113,39 +116,6 @@ namespace AssetSync.Infrastructure.Persistence.Migrations
                     b.ToTable("MaintenanceRecords");
                 });
 
-            modelBuilder.Entity("AssetSync.Domain.OutboxMessage", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("Attempts")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("LastError")
-                        .HasMaxLength(2000)
-                        .HasColumnType("nvarchar(2000)");
-
-                    b.Property<DateTime?>("ProcessedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int>("WorkOrderId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("WorkOrderId");
-
-                    b.HasIndex("ProcessedAt", "Attempts");
-
-                    b.ToTable("OutboxMessages");
-                });
-
             modelBuilder.Entity("AssetSync.Domain.WorkOrder", b =>
                 {
                     b.Property<int>("Id")
@@ -191,15 +161,6 @@ namespace AssetSync.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("AssetSync.Domain.MaintenanceRecord", b =>
-                {
-                    b.HasOne("AssetSync.Domain.WorkOrder", null)
-                        .WithMany()
-                        .HasForeignKey("WorkOrderId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("AssetSync.Domain.OutboxMessage", b =>
                 {
                     b.HasOne("AssetSync.Domain.WorkOrder", null)
                         .WithMany()

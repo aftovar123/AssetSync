@@ -1,0 +1,20 @@
+namespace AssetSync.Domain;
+
+/// <summary>
+/// Durable queue of "this work order needs to be synced" intents. Written
+/// in the same transaction as the business change that creates the intent
+/// (see CompleteWorkOrderCommand), so a crash can never leave one without
+/// the other. A background processor works through these independently of
+/// any single HTTP request, so an outage doesn't lose the retry.
+/// </summary>
+public class OutboxMessage
+{
+    public const int MaxAttempts = 5;
+
+    public int Id { get; set; }
+    public int WorkOrderId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? ProcessedAt { get; set; }
+    public int Attempts { get; set; }
+    public string? LastError { get; set; }
+}

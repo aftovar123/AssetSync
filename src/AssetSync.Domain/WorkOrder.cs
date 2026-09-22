@@ -16,4 +16,5 @@ public class WorkOrder
     public WorkOrderStatus Status { get; set; } = WorkOrderStatus.Open;
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
+    public bool IsSynced { get; set; }
 }
