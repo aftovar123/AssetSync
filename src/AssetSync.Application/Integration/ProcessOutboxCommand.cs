@@ -28,11 +28,11 @@ public class ProcessOutboxCommandHandler(
 
             if (result.Success)
             {
-                outboxRepository.MarkProcessed(message, clock.UtcNow);
+                message.MarkProcessed(clock.UtcNow);
             }
             else
             {
-                outboxRepository.MarkFailedAttempt(message, result.ErrorMessage ?? "Unknown error");
+                message.RecordFailedAttempt(result.ErrorMessage ?? "Unknown error");
             }
         }
 

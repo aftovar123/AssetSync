@@ -44,7 +44,8 @@ public class AssetSyncDbContext(DbContextOptions<AssetSyncDbContext> options) : 
         modelBuilder.Entity<OutboxMessage>(e =>
         {
             e.Property(m => m.LastError).HasMaxLength(2000);
-            e.HasIndex(m => new { m.ProcessedAt, m.Attempts });
+            e.Property(m => m.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(m => m.Status);
             e.HasOne<WorkOrder>().WithMany().HasForeignKey(m => m.WorkOrderId).OnDelete(DeleteBehavior.Cascade);
         });
     }

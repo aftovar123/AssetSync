@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\AssetSync.Domain\AssetSync.Domain.csproj" />
     <ProjectReference Include="..\..\src\AssetSync.Application\AssetSync.Application.csproj" />
+    <ProjectReference Include="..\..\src\AssetSync.Infrastructure\AssetSync.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

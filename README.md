@@ -44,22 +44,30 @@ base de datos. El cambio de negocio y la intención de avisar al sistema
 externo quedan atados: no puede pasar que uno se guarde sin el otro, ni
 siquiera si el proceso se cae justo después.
 
-**2. Reintento con idempotencia, dentro del procesamiento.** Un
+**2. Reintento con backoff, separado de la lógica de negocio.** Un
 `BackgroundService` revisa la tabla de outbox cada 10 segundos (sin bloquear
 ninguna petición HTTP) y dispara `SyncWorkOrderCommand`, que:
 - Genera un **código único por intento de sincronización**, reutilizado en
-  los reintentos de ese mismo intento — así el sistema externo puede
+  cada reintento de ese mismo intento — así el sistema externo puede
   reconocer una solicitud repetida en vez de aplicarla dos veces.
-- Reintenta hasta 3 veces ante fallos transitorios antes de rendirse.
-- Registra cada intento en `IntegrationLog` (éxito o error), y notifica el
-  resultado final — todo esto es el mismo patrón que uso en producción para
-  una integración real con SAP, aquí aplicado a un problema propio y público.
+- Llama a `IExternalErpClient` una sola vez desde el punto de vista del
+  handler. Quien reintenta de verdad es `ResilientErpClient`, un decorador
+  de Infraestructura que envuelve al cliente real con **Polly**: backoff
+  exponencial con jitter, 3 intentos en total. "Cuántas veces y cuánto
+  esperar" es una decisión de infraestructura, no algo mezclado dentro de
+  la regla de negocio.
+- Registra cada resultado final en `IntegrationLog` (éxito o error), y
+  notifica — todo esto es el mismo patrón que uso en producción para una
+  integración real con SAP, aquí aplicado a un problema propio y público.
 
-Si la sincronización falla las 3 veces, el mensaje del outbox queda
-pendiente con su contador de intentos — el siguiente ciclo del
-`BackgroundService` lo vuelve a intentar, hasta un máximo de 5 intentos
-(`OutboxMessage.MaxAttempts`), después de lo cual queda descartado del
-sondeo (evita reintentar indefinidamente algo que nunca va a funcionar).
+Si la sincronización sigue fallando después de esos reintentos, el mensaje
+del outbox queda pendiente con su contador de intentos — el siguiente ciclo
+del `BackgroundService` lo vuelve a tomar, hasta un máximo de 5 intentos
+(`OutboxMessage.MaxAttempts`). En ese punto, **`OutboxMessage` se marca a sí
+mismo como `Failed`** (una regla del propio dominio, no una consulta
+implícita) y deja de aparecer en el sondeo — evita reintentar para siempre
+algo que claramente no va a funcionar, y queda visible para revisión manual
+en vez de desaparecer en silencio.
 
 ## Reloj inyectable
 
@@ -99,18 +107,25 @@ La cadena de conexión por defecto (`appsettings.json`) apunta a
 dotnet test
 ```
 
-9 tests con xUnit y Moq sobre los handlers de Application — sin tocar la base
-de datos real ni el reloj del sistema:
+13 tests con xUnit y Moq — sin tocar la base de datos real ni el reloj del
+sistema, y sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
-- `SyncWorkOrderCommandHandler`: éxito directo, reintentos ante fallo
-  transitorio (mismo código de idempotencia en los 3 intentos), fallo total
-  tras 3 intentos, y que una orden ya sincronizada no se reenvía.
+- `SyncWorkOrderCommandHandler`: éxito directo, que una orden ya sincronizada
+  no se reenvía, y que un fallo del cliente ERP se registra y notifica.
+- `ResilientErpClient`: que el decorador de Polly sí reintenta ante fallos
+  transitorios (con el mismo código de idempotencia en cada intento) hasta
+  lograr éxito, y que ante fallos permanentes reintenta las veces
+  configuradas y finalmente se rinde.
 - `CompleteWorkOrderCommandHandler`: que el cambio de estado y el mensaje de
   outbox se guardan en una sola llamada a `SaveChanges` — la garantía de
   atomicidad del patrón.
 - `ProcessOutboxCommandHandler`: que un mensaje procesado con éxito se marca
-  como tal, que uno fallido registra el error sin marcarlo procesado, y que
-  sin mensajes pendientes no se llama al sistema externo.
+  como tal, que uno fallido registra el intento sin marcarlo procesado, y
+  que sin mensajes pendientes no se llama al sistema externo.
+- `OutboxMessage` (dominio puro, sin mocks): que un mensaje se queda
+  `Pending` mientras no llegue al máximo de intentos, y que al llegar pasa a
+  `Failed` — la regla vive en la entidad, no en una consulta de la capa de
+  persistencia.
 
 ## Decisiones fuera de alcance (a propósito)
 

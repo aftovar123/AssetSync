@@ -16,7 +16,10 @@ builder.Services.AddMediatR(cfg =>
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<IWorkOrderRepository, WorkOrderRepository>();
 builder.Services.AddScoped<IOutboxRepository, OutboxRepository>();
-builder.Services.AddScoped<IExternalErpClient, SimulatedErpClient>();
+builder.Services.AddScoped<SimulatedErpClient>();
+builder.Services.AddScoped<IExternalErpClient>(sp => new ResilientErpClient(
+    sp.GetRequiredService<SimulatedErpClient>(),
+    sp.GetRequiredService<ILogger<ResilientErpClient>>()));
 builder.Services.AddScoped<INotificationService, ConsoleNotificationService>();
 builder.Services.AddHostedService<OutboxProcessor>();
 

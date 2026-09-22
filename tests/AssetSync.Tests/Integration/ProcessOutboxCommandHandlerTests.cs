@@ -28,13 +28,13 @@ public class ProcessOutboxCommandHandlerTests
         var processed = await handler.Handle(new ProcessOutboxCommand(), CancellationToken.None);
 
         Assert.Equal(1, processed);
-        _outboxRepository.Verify(o => o.MarkProcessed(message, _fixedNow), Times.Once);
-        _outboxRepository.Verify(o => o.MarkFailedAttempt(It.IsAny<OutboxMessage>(), It.IsAny<string>()), Times.Never);
+        Assert.Equal(OutboxMessageStatus.Processed, message.Status);
+        Assert.Equal(_fixedNow, message.ProcessedAt);
         _outboxRepository.Verify(o => o.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task Handle_FailedSync_RecordsFailedAttempt()
+    public async Task Handle_FailedSync_RecordsFailedAttemptWithoutExhaustingRetries()
     {
         var message = new OutboxMessage { Id = 2, WorkOrderId = 7, CreatedAt = _fixedNow.AddMinutes(-5) };
         _outboxRepository.Setup(o => o.GetPendingAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -46,8 +46,9 @@ public class ProcessOutboxCommandHandlerTests
         var processed = await handler.Handle(new ProcessOutboxCommand(), CancellationToken.None);
 
         Assert.Equal(1, processed);
-        _outboxRepository.Verify(o => o.MarkFailedAttempt(message, "ERP unreachable"), Times.Once);
-        _outboxRepository.Verify(o => o.MarkProcessed(It.IsAny<OutboxMessage>(), It.IsAny<DateTime>()), Times.Never);
+        Assert.Equal(1, message.Attempts);
+        Assert.Equal("ERP unreachable", message.LastError);
+        Assert.Equal(OutboxMessageStatus.Pending, message.Status);
     }
 
     [Fact]

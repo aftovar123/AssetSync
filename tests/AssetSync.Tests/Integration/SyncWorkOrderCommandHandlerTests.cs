@@ -64,38 +64,11 @@ public class SyncWorkOrderCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_TransientFailureThenSuccess_RetriesWithSameCodeAndSucceeds()
+    public async Task Handle_ErpClientThrows_LeavesUnsyncedLogsFailureAndNotifies()
     {
-        var workOrder = MakeWorkOrder();
-        _repository.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(workOrder);
-
-        var callCount = 0;
-        var codesUsed = new List<string>();
-        _erpClient
-            .Setup(c => c.SubmitWorkOrderAsync(workOrder, It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .Returns((WorkOrder _, string code, CancellationToken _) =>
-            {
-                callCount++;
-                codesUsed.Add(code);
-                if (callCount < 3)
-                {
-                    throw new InvalidOperationException("Simulated transient ERP timeout.");
-                }
-                return Task.CompletedTask;
-            });
-
-        var handler = CreateHandler();
-        var result = await handler.Handle(new SyncWorkOrderCommand(1), CancellationToken.None);
-
-        Assert.True(result.Success);
-        Assert.Equal(3, callCount);
-        Assert.True(workOrder.IsSynced);
-        Assert.All(codesUsed, code => Assert.Equal(result.SubmissionCode, code));
-    }
-
-    [Fact]
-    public async Task Handle_AllAttemptsFail_LeavesUnsyncedLogsFailureAndNotifies()
-    {
+        // Retry lives in ResilientErpClient now (see ResilientErpClientTests) —
+        // from the handler's point of view, the client either succeeds once
+        // or fails once, after whatever retrying already happened underneath.
         var workOrder = MakeWorkOrder();
         _repository.Setup(r => r.GetByIdAsync(1, It.IsAny<CancellationToken>())).ReturnsAsync(workOrder);
         _erpClient
@@ -107,7 +80,7 @@ public class SyncWorkOrderCommandHandlerTests
 
         Assert.False(result.Success);
         Assert.False(workOrder.IsSynced);
-        _erpClient.Verify(c => c.SubmitWorkOrderAsync(workOrder, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Exactly(3));
+        _erpClient.Verify(c => c.SubmitWorkOrderAsync(workOrder, It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
         _repository.Verify(r => r.AddIntegrationLogAsync(
             It.Is<IntegrationLog>(l => !l.Sent && l.ErrorMessage == "ERP unreachable" && l.AttemptedAt == _fixedNow),
             It.IsAny<CancellationToken>()), Times.Once);
