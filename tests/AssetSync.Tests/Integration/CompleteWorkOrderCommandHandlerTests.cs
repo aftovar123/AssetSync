@@ -1,3 +1,4 @@
+using AssetSync.Application.Common.Exceptions;
 using AssetSync.Application.Integration;
 using AssetSync.Domain;
 using Moq;
@@ -43,7 +44,7 @@ public class CompleteWorkOrderCommandHandlerTests
 
         var handler = CreateHandler();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<NotFoundException>(() =>
             handler.Handle(new CompleteWorkOrderCommand(99), CancellationToken.None));
     }
 }

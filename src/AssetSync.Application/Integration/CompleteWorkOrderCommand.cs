@@ -1,3 +1,4 @@
+using AssetSync.Application.Common.Exceptions;
 using AssetSync.Domain;
 using MediatR;
 
@@ -18,7 +19,7 @@ public class CompleteWorkOrderCommandHandler(
     public async Task<Unit> Handle(CompleteWorkOrderCommand request, CancellationToken cancellationToken)
     {
         var workOrder = await workOrderRepository.GetByIdAsync(request.WorkOrderId, cancellationToken)
-            ?? throw new InvalidOperationException($"Work order {request.WorkOrderId} not found.");
+            ?? throw new NotFoundException($"Work order {request.WorkOrderId} not found.");
 
         workOrder.Status = WorkOrderStatus.Completed;
         workOrder.CompletedAt = clock.UtcNow;

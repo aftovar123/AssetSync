@@ -1,3 +1,4 @@
+using AssetSync.Application.Common.Exceptions;
 using AssetSync.Domain;
 using MediatR;
 
@@ -20,7 +21,7 @@ public class SyncWorkOrderCommandHandler(
     public async Task<SyncWorkOrderResult> Handle(SyncWorkOrderCommand request, CancellationToken cancellationToken)
     {
         var workOrder = await repository.GetByIdAsync(request.WorkOrderId, cancellationToken)
-            ?? throw new InvalidOperationException($"Work order {request.WorkOrderId} not found.");
+            ?? throw new NotFoundException($"Work order {request.WorkOrderId} not found.");
 
         // Already synced: don't resend — this is the duplicate-prevention check.
         if (workOrder.IsSynced)

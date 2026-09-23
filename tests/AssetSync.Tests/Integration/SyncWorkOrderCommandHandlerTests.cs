@@ -1,3 +1,4 @@
+using AssetSync.Application.Common.Exceptions;
 using AssetSync.Application.Integration;
 using AssetSync.Domain;
 using Moq;
@@ -47,6 +48,17 @@ public class SyncWorkOrderCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(n => n.NotifySuccessAsync(result.SubmissionCode, It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(n => n.NotifyFailureAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Handle_UnknownWorkOrder_ThrowsNotFound()
+    {
+        _repository.Setup(r => r.GetByIdAsync(404, It.IsAny<CancellationToken>())).ReturnsAsync((WorkOrder?)null);
+
+        var handler = CreateHandler();
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            handler.Handle(new SyncWorkOrderCommand(404), CancellationToken.None));
     }
 
     [Fact]

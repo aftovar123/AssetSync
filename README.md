@@ -13,24 +13,15 @@ patrón Transactional Outbox — no un CRUD de ejemplo más.
 
 ```
 src/
-  AssetSync.Domain/         # Asset, WorkOrder, MaintenanceRecord, IntegrationLog,
-                             # OutboxMessage, IClock — sin dependencias externas
-  AssetSync.Application/    # Comandos y handlers (MediatR), contratos de los
-                             # repositorios e integraciones que Domain no conoce
-  AssetSync.Infrastructure/ # EF Core + SQL Server, el cliente ERP simulado, el
-                             # servicio de notificaciones, y el BackgroundService
-                             # que procesa el outbox
-  AssetSync.Api/            # Composición: DI, endpoints REST, appsettings
+  AssetSync.Domain/         # Entidades y reglas — sin dependencias externas
+  AssetSync.Application/    # Comandos y handlers (MediatR), contratos que
+                             # Domain no conoce (repositorios, integraciones)
+  AssetSync.Infrastructure/ # EF Core + SQL Server, cliente ERP simulado,
+                             # BackgroundService que procesa el outbox
+  AssetSync.Api/            # Composición: DI, endpoints REST
 tests/
   AssetSync.Tests/          # xUnit + Moq
 ```
-
-Regla de dependencia: `Domain` no conoce nada externo. `Application` define
-interfaces (`IWorkOrderRepository`, `IOutboxRepository`, `IExternalErpClient`,
-`INotificationService`) que `Infrastructure` implementa. `Api` es la raíz de
-composición — solo conecta piezas, no contiene lógica de negocio. Verificado
-mirando las referencias reales de cada `.csproj`, no solo el nombre de la
-carpeta:
 
 ```mermaid
 flowchart LR
@@ -40,47 +31,30 @@ flowchart LR
     Dom["AssetSync.Domain<br/><small>entidades, reglas, IClock</small>"]
 ```
 
-Las flechas apuntan siempre hacia adentro. `Domain` no tiene ni una sola
-referencia — ni de paquete ni de proyecto.
+Las flechas apuntan siempre hacia adentro — verificado mirando las
+referencias reales de cada `.csproj`, no solo el nombre de la carpeta.
+`Domain` no tiene ni una sola referencia, ni de paquete ni de proyecto.
 
 ## El problema real: sincronizar sin perder nada
 
-Cuando una orden de trabajo se completa, hay que avisarle a un sistema
-externo. Eso puede fallar de formas muy distintas: la red se cae, el proceso
-se reinicia a mitad de un reintento, o el sistema externo tarda y no se sabe
-si procesó la solicitud o no. Este proyecto resuelve esto en dos capas:
+Al completar una orden de trabajo hay que avisarle a un sistema externo, y
+eso puede fallar de formas muy distintas: la red se cae, el proceso se
+reinicia a mitad de un reintento, o no se sabe si la solicitud llegó. Dos
+capas resuelven esto:
 
-**1. Patrón Outbox transaccional.** Al completar una orden de trabajo,
-`CompleteWorkOrderCommand` marca el estado **y** encola la intención de
-sincronizar en la **misma llamada a `SaveChanges`** — una sola transacción de
-base de datos. El cambio de negocio y la intención de avisar al sistema
-externo quedan atados: no puede pasar que uno se guarde sin el otro, ni
-siquiera si el proceso se cae justo después.
+1. **Outbox transaccional.** `CompleteWorkOrderCommand` marca el estado **y**
+   encola la intención de sincronizar en la misma llamada a `SaveChanges` —
+   una sola transacción. No puede pasar que uno se guarde sin el otro.
+2. **Reintento con backoff, separado del negocio.** Un `BackgroundService`
+   revisa el outbox cada 10s y dispara `SyncWorkOrderCommand`, que genera un
+   **código de idempotencia** reutilizado en cada reintento, llama a
+   `IExternalErpClient` una sola vez desde su punto de vista (quien reintenta
+   de verdad es `ResilientErpClient`, un decorador con **Polly**: backoff
+   exponencial + jitter), y registra cada resultado en `IntegrationLog`.
 
-**2. Reintento con backoff, separado de la lógica de negocio.** Un
-`BackgroundService` revisa la tabla de outbox cada 10 segundos (sin bloquear
-ninguna petición HTTP) y dispara `SyncWorkOrderCommand`, que:
-- Genera un **código único por intento de sincronización**, reutilizado en
-  cada reintento de ese mismo intento — así el sistema externo puede
-  reconocer una solicitud repetida en vez de aplicarla dos veces.
-- Llama a `IExternalErpClient` una sola vez desde el punto de vista del
-  handler. Quien reintenta de verdad es `ResilientErpClient`, un decorador
-  de Infraestructura que envuelve al cliente real con **Polly**: backoff
-  exponencial con jitter, 3 intentos en total. "Cuántas veces y cuánto
-  esperar" es una decisión de infraestructura, no algo mezclado dentro de
-  la regla de negocio.
-- Registra cada resultado final en `IntegrationLog` (éxito o error), y
-  notifica — todo esto es el mismo patrón que uso en producción para una
-  integración real con SAP, aquí aplicado a un problema propio y público.
-
-Si la sincronización sigue fallando después de esos reintentos, el mensaje
-del outbox queda pendiente con su contador de intentos — el siguiente ciclo
-del `BackgroundService` lo vuelve a tomar, hasta un máximo de 5 intentos
-(`OutboxMessage.MaxAttempts`). En ese punto, **`OutboxMessage` se marca a sí
-mismo como `Failed`** (una regla del propio dominio, no una consulta
-implícita) y deja de aparecer en el sondeo — evita reintentar para siempre
-algo que claramente no va a funcionar, y queda visible para revisión manual
-en vez de desaparecer en silencio.
+Si el mensaje sigue fallando tras 5 intentos, `OutboxMessage` se marca a sí
+mismo como `Failed` — una regla del dominio, no una consulta implícita — y
+deja de reintentarse para siempre.
 
 ```mermaid
 sequenceDiagram
@@ -94,7 +68,7 @@ sequenceDiagram
 
     Client->>Api: POST /work-orders/{id}/complete
     Api->>DB: WorkOrder → Completed<br/>+ OutboxMessage → Pending
-    Note over DB: Una sola llamada a SaveChanges,<br/>una sola transacción
+    Note over DB: Una sola llamada a SaveChanges
     Api-->>Client: 202 Accepted
 
     rect rgb(240, 240, 250)
@@ -102,80 +76,49 @@ sequenceDiagram
     Processor->>DB: busca OutboxMessages Pending
     Processor->>Sync: SyncWorkOrderCommand(workOrderId)
     Sync->>Erp: SubmitWorkOrderAsync(workOrder, submissionCode)
-    Erp->>Ext: intento 1
-    Ext-->>Erp: falla transitoria
-    Erp->>Ext: intento 2 (backoff exponencial + jitter)
-    Ext-->>Erp: éxito
+    Erp->>Ext: intento 1 (falla transitoria)
+    Erp->>Ext: intento 2 (backoff exponencial + jitter) → éxito
     Erp-->>Sync: ok
-    Sync->>DB: WorkOrder.IsSynced = true<br/>IntegrationLog(Sent=true, submissionCode)
-    Sync-->>Processor: SyncWorkOrderResult(Success)
+    Sync->>DB: WorkOrder.IsSynced = true<br/>IntegrationLog(Sent=true)
     Processor->>DB: OutboxMessage.MarkProcessed()
     end
 ```
 
-El punto clave del diagrama: la petición HTTP termina en el primer bloque,
-antes de que exista ninguna garantía de que la sincronización funcionó. Todo
-lo que puede fallar — la llamada externa, sus reintentos, el resultado final
-— pasa después, de forma independiente, y sobrevive a un reinicio del
-proceso porque ya quedó escrito en la base de datos desde el primer paso.
+La petición HTTP termina en el primer bloque, antes de que exista ninguna
+garantía de sincronización. Todo lo que puede fallar pasa después, de forma
+independiente, y sobrevive a un reinicio porque ya quedó en la base de datos.
 
-## Reloj inyectable
+## Validación y manejo de errores
 
-`IClock`/`SystemClock` reemplaza las llamadas directas a `DateTime.UtcNow` en
-toda la lógica de negocio — mismo patrón que uso en mi otro proyecto,
-[Questlog](https://github.com/aftovar123/questlog). Permite que los tests
-fijen un instante exacto (`AttemptedAt`, `CompletedAt`, `ProcessedAt`) en vez
-de asumir cuándo corrió la prueba.
+`POST /assets` y `POST /work-orders` pasan por comandos MediatR
+(`CreateAssetCommand`, `CreateWorkOrderCommand`), igual que el resto de
+`Application`. Un `ValidationBehavior<TRequest, TResponse>` — un pipeline
+behavior de MediatR registrado una sola vez — corre todos los
+`IValidator<TRequest>` de FluentValidation **antes** de cualquier handler:
+si algo falla, lanza `ValidationException` y el handler nunca se ejecuta. La
+regla de `AssetId` en `CreateWorkOrderCommandValidator` es un `MustAsync` que
+consulta `IAssetRepository` de verdad — no solo "¿es mayor que cero?", sino
+"¿ese activo existe?".
 
-## Validación con FluentValidation
-
-`POST /assets` y `POST /work-orders` ahora pasan por comandos MediatR
-(`CreateAssetCommand`, `CreateWorkOrderCommand`) en vez de escribir
-directamente contra `DbContext` — consistente con el resto de `Application`,
-que ya usaba este patrón para completar/sincronizar. Eso abre la puerta a
-`ValidationBehavior<TRequest, TResponse>`: un pipeline behavior de MediatR que
-se registra una sola vez y corre **antes** de cualquier handler, ejecutando
-todos los `IValidator<TRequest>` que FluentValidation encuentre para ese
-comando. Si algo falla, lanza `ValidationException` y el handler nunca se
-ejecuta — no hay forma de que una regla de negocio corra con datos inválidos
-porque alguien olvidó llamar al validador a mano en un endpoint nuevo.
-
-```csharp
-public class ValidationBehavior<TRequest, TResponse>(IEnumerable<IValidator<TRequest>> validators)
-    : IPipelineBehavior<TRequest, TResponse> where TRequest : notnull
-{
-    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
-    {
-        var failures = (await Task.WhenAll(validators.Select(v => v.ValidateAsync(request, ct))))
-            .SelectMany(r => r.Errors).ToList();
-        if (failures.Count > 0) throw new ValidationException(failures);
-        return await next(ct);
-    }
-}
-```
-
-Un middleware de errores traduce esa excepción a `400` con el detalle por
-campo (formato `HttpValidationProblemDetails`, el mismo que usa
-`[ApiController]`). Ejemplo real, contra la API corriendo:
+Un `GlobalExceptionHandler` (`IExceptionHandler`, .NET 8+) traduce eso a
+respuestas HTTP: `ValidationException` → `400` con el detalle por campo,
+`NotFoundException` → `404`, cualquier otra excepción → `500` genérico sin
+filtrar detalles internos. Ejemplos reales contra la API corriendo:
 
 ```bash
 $ curl -X POST http://localhost:5188/work-orders -d '{"assetId":9999,"description":""}'
-{
-  "title": "One or more validation errors occurred.",
-  "errors": {
-    "AssetId": ["Asset 9999 does not exist."],
-    "Description": ["'Description' no debería estar vacío."]
-  }
-}
+{"errors":{"AssetId":["Asset 9999 does not exist."],"Description":["'Description' no debería estar vacío."]}}
+# HTTP 400
+
+$ curl -X POST http://localhost:5188/work-orders/99999/complete
+{"title":"Work order 99999 not found.","status":404}
 ```
 
-La regla `AssetId` es un `MustAsync` que consulta `IAssetRepository` de
-verdad — no es solo "¿es mayor que cero?", sino "¿existe ese activo?". Esto
-es lo que en un proyecto real le pediría a un cliente ajustar caso por caso:
-las reglas de formato (longitudes, campos requeridos) casi nunca cambian,
-pero las reglas de negocio (¿qué hace único a un código de activo?, ¿puede
-haber dos órdenes abiertas para el mismo activo?) sí dependen de cómo
-trabaja cada cliente, y viven en su propio validador, aislado del resto.
+## Reloj inyectable
+
+`IClock`/`SystemClock` reemplaza `DateTime.UtcNow` en toda la lógica de
+negocio — mismo patrón que uso en [Questlog](https://github.com/aftovar123/questlog).
+Permite que los tests fijen un instante exacto en vez de asumir cuándo corrió la prueba.
 
 ## Cómo correrlo
 
@@ -188,31 +131,19 @@ dotnet ef database update --project src/AssetSync.Infrastructure --startup-proje
 dotnet run --project src/AssetSync.Api
 ```
 
-La cadena de conexión por defecto (`appsettings.json`) apunta a
-`(localdb)\MSSQLLocalDB`.
+La cadena de conexión por defecto (`appsettings.json`) apunta a `(localdb)\MSSQLLocalDB`.
 
 ### Interfaz visual (Scalar)
 
-Con la API corriendo en modo desarrollo, `/scalar/v1` sirve una interfaz
-visual (generada a partir del documento OpenAPI que expone `/openapi/v1.json`)
-para explorar y probar cada endpoint sin Postman ni curl: request/response de
-ejemplo, esquemas de cada modelo, y un botón para ejecutar la llamada real
-contra la API que está corriendo.
+En desarrollo, `/scalar/v1` sirve una interfaz visual (generada desde
+`/openapi/v1.json`) para explorar y probar cada endpoint sin Postman ni curl.
 
-```
-http://localhost:5188/scalar/v1
-```
-
-Estas son capturas reales de un ciclo completo corriendo: se crea una orden de
-trabajo, se marca como completada (`POST /work-orders/{id}/complete`), y unos
-segundos después el `OutboxProcessor` ya la sincronizó — sin ninguna llamada
-manual entre medio.
+Capturas reales de un ciclo completo: se crea una orden, se completa, y
+segundos después el `OutboxProcessor` ya la sincronizó.
 
 | Interfaz visual (Scalar) | Outbox después de sincronizar |
 |---|---|
-| ![Interfaz visual Scalar mostrando los endpoints de AssetSync.Api](docs/scalar-ui.png) | ![Test Request en vivo contra GET /outbox: la orden de trabajo 4 aparece con status Processed segundos después de completarse](docs/outbox-live.png) |
-
-**Órdenes de trabajo ya sincronizadas** — mismo endpoint (`GET /work-orders`) visto en vivo: cada orden completada aparece con `isSynced: true`.
+| ![Interfaz visual Scalar mostrando los endpoints de AssetSync.Api](docs/scalar-ui.png) | ![Test Request en vivo contra GET /outbox: status Processed segundos después de completarse](docs/outbox-live.png) |
 
 ![Test Request en vivo contra GET /work-orders mostrando isSynced en true tras la sincronización](docs/workorders-live.png)
 
@@ -232,46 +163,29 @@ manual entre medio.
 dotnet test
 ```
 
-27 tests con xUnit y Moq — sin tocar la base de datos real ni el reloj del
-sistema, y sin esperar tiempo real salvo donde se prueba backoff de verdad:
+31 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
+sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
-- `SyncWorkOrderCommandHandler`: éxito directo, que una orden ya sincronizada
-  no se reenvía, y que un fallo del cliente ERP se registra y notifica.
-- `ResilientErpClient`: que el decorador de Polly sí reintenta ante fallos
-  transitorios (con el mismo código de idempotencia en cada intento) hasta
-  lograr éxito, y que ante fallos permanentes reintenta las veces
-  configuradas y finalmente se rinde.
-- `CompleteWorkOrderCommandHandler`: que el cambio de estado y el mensaje de
-  outbox se guardan en una sola llamada a `SaveChanges` — la garantía de
-  atomicidad del patrón.
-- `ProcessOutboxCommandHandler`: que un mensaje procesado con éxito se marca
-  como tal, que uno fallido registra el intento sin marcarlo procesado, y
-  que sin mensajes pendientes no se llama al sistema externo.
-- `OutboxMessage` (dominio puro, sin mocks): que un mensaje se queda
-  `Pending` mientras no llegue al máximo de intentos, y que al llegar pasa a
-  `Failed` — la regla vive en la entidad, no en una consulta de la capa de
-  persistencia.
-- `ValidationBehavior`: sin validadores registrados no interfiere, con uno
-  que pasa deja seguir al handler, y con uno que falla lanza
-  `ValidationException` **sin** llegar a llamar al handler.
-- `CreateAssetCommandValidator` / `CreateWorkOrderCommandValidator`: campos
-  vacíos, longitudes fuera de rango, y el caso async — un `AssetId` que no
-  existe en la base de datos (con `IAssetRepository` mockeado).
-- `CreateAssetCommandHandler` / `CreateWorkOrderCommandHandler`: que
-  persisten la entidad correcta y usan el reloj inyectado, no
-  `DateTime.UtcNow` directo.
+- **Outbox y sincronización**: `SyncWorkOrderCommandHandler`,
+  `CompleteWorkOrderCommandHandler`, `ProcessOutboxCommandHandler` y
+  `OutboxMessage` (dominio puro) — éxito, duplicados, fallos, y la regla de
+  `Failed` tras el máximo de intentos.
+- **Resiliencia**: `ResilientErpClient` reintenta ante fallos transitorios
+  con el mismo código de idempotencia, y se rinde tras los intentos configurados.
+- **Validación y errores**: `ValidationBehavior`, los validadores de
+  `CreateAssetCommand`/`CreateWorkOrderCommand` (incluyendo el `AssetId`
+  async contra un repositorio mockeado), y `GlobalExceptionHandler`
+  (400/404/500 según el tipo de excepción).
+- **Comandos de creación**: que los handlers persisten la entidad correcta
+  usando el reloj inyectado, no `DateTime.UtcNow` directo.
 
 ## Decisiones fuera de alcance (a propósito)
 
-- El cliente ERP y el servicio de notificaciones son simulados
-  (`SimulatedErpClient`, `ConsoleNotificationService`) para que el proyecto
-  corra sin credenciales externas — en producción serían una llamada
-  HTTP/SOAP real y un envío de correo real, respectivamente, detrás de la
-  misma interfaz.
+- El cliente ERP y el servicio de notificaciones son simulados para que el
+  proyecto corra sin credenciales externas.
 - Sin autenticación ni autorización — no es el foco de este proyecto.
 - El outbox está acoplado a `WorkOrder` en vez de ser genérico para
-  cualquier tipo de evento; una versión más general guardaría un tipo de
-  mensaje y un payload serializado.
-- El manejo de errores solo traduce `ValidationException` a un `400`
-  detallado; cualquier otra excepción cae a un `500` genérico. Un mapa
-  completo de excepciones de dominio a `ProblemDetails` queda pendiente.
+  cualquier tipo de evento.
+- El mapa de errores cubre validación y "no encontrado"; excepciones de
+  negocio más específicas (conflictos, reglas de estado) seguirían cayendo
+  al `500` genérico hasta que el proyecto las necesite.

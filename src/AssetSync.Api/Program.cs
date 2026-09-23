@@ -1,3 +1,4 @@
+using AssetSync.Api;
 using AssetSync.Application.Assets;
 using AssetSync.Application.Common.Behaviors;
 using AssetSync.Application.Integration;
@@ -7,8 +8,6 @@ using AssetSync.Infrastructure;
 using AssetSync.Infrastructure.Integration;
 using FluentValidation;
 using MediatR;
-using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 
@@ -23,6 +22,9 @@ builder.Services.AddMediatR(cfg =>
     cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
 });
 builder.Services.AddValidatorsFromAssembly(typeof(AssetSync.Application.AssemblyMarker).Assembly);
+
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
 
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<IAssetRepository, AssetRepository>();
@@ -45,25 +47,9 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-// FluentValidation failures raised by ValidationBehavior land here as a 400
-// with per-field messages. Anything else is an unhandled 500 for now — a
-// full ProblemDetails error map is a separate, not-yet-scoped improvement.
-app.UseExceptionHandler(errorApp => errorApp.Run(async context =>
-{
-    var error = context.Features.Get<IExceptionHandlerFeature>()?.Error;
-    if (error is ValidationException validationException)
-    {
-        var errors = validationException.Errors
-            .GroupBy(e => e.PropertyName)
-            .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
-        context.Response.StatusCode = StatusCodes.Status400BadRequest;
-        await context.Response.WriteAsJsonAsync(new HttpValidationProblemDetails(errors));
-        return;
-    }
-
-    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-    await context.Response.WriteAsJsonAsync(new ProblemDetails { Title = "An unexpected error occurred." });
-}));
+// Delegates to GlobalExceptionHandler: ValidationException -> 400,
+// NotFoundException -> 404, anything else -> 500. See that class for why.
+app.UseExceptionHandler();
 
 app.MapGet("/assets", async (AssetSyncDbContext db) =>
     await db.Assets.ToListAsync())
