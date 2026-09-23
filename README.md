@@ -153,7 +153,18 @@ contra la API que está corriendo.
 http://localhost:5188/scalar/v1
 ```
 
-![Interfaz visual Scalar mostrando los endpoints de AssetSync.Api](docs/scalar-ui.png)
+Estas son capturas reales de un ciclo completo corriendo: se crea una orden de
+trabajo, se marca como completada (`POST /work-orders/{id}/complete`), y unos
+segundos después el `OutboxProcessor` ya la sincronizó — sin ninguna llamada
+manual entre medio.
+
+| Interfaz visual (Scalar) | Outbox después de sincronizar |
+|---|---|
+| ![Interfaz visual Scalar mostrando los endpoints de AssetSync.Api](docs/scalar-ui.png) | ![Test Request en vivo contra GET /outbox: la orden de trabajo 4 aparece con status Processed segundos después de completarse](docs/outbox-live.png) |
+
+**Órdenes de trabajo ya sincronizadas** — mismo endpoint (`GET /work-orders`) visto en vivo: cada orden completada aparece con `isSynced: true`.
+
+![Test Request en vivo contra GET /work-orders mostrando isSynced en true tras la sincronización](docs/workorders-live.png)
 
 ### Endpoints principales
 
