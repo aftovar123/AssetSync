@@ -127,6 +127,56 @@ toda la lógica de negocio — mismo patrón que uso en mi otro proyecto,
 fijen un instante exacto (`AttemptedAt`, `CompletedAt`, `ProcessedAt`) en vez
 de asumir cuándo corrió la prueba.
 
+## Validación con FluentValidation
+
+`POST /assets` y `POST /work-orders` ahora pasan por comandos MediatR
+(`CreateAssetCommand`, `CreateWorkOrderCommand`) en vez de escribir
+directamente contra `DbContext` — consistente con el resto de `Application`,
+que ya usaba este patrón para completar/sincronizar. Eso abre la puerta a
+`ValidationBehavior<TRequest, TResponse>`: un pipeline behavior de MediatR que
+se registra una sola vez y corre **antes** de cualquier handler, ejecutando
+todos los `IValidator<TRequest>` que FluentValidation encuentre para ese
+comando. Si algo falla, lanza `ValidationException` y el handler nunca se
+ejecuta — no hay forma de que una regla de negocio corra con datos inválidos
+porque alguien olvidó llamar al validador a mano en un endpoint nuevo.
+
+```csharp
+public class ValidationBehavior<TRequest, TResponse>(IEnumerable<IValidator<TRequest>> validators)
+    : IPipelineBehavior<TRequest, TResponse> where TRequest : notnull
+{
+    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken ct)
+    {
+        var failures = (await Task.WhenAll(validators.Select(v => v.ValidateAsync(request, ct))))
+            .SelectMany(r => r.Errors).ToList();
+        if (failures.Count > 0) throw new ValidationException(failures);
+        return await next(ct);
+    }
+}
+```
+
+Un middleware de errores traduce esa excepción a `400` con el detalle por
+campo (formato `HttpValidationProblemDetails`, el mismo que usa
+`[ApiController]`). Ejemplo real, contra la API corriendo:
+
+```bash
+$ curl -X POST http://localhost:5188/work-orders -d '{"assetId":9999,"description":""}'
+{
+  "title": "One or more validation errors occurred.",
+  "errors": {
+    "AssetId": ["Asset 9999 does not exist."],
+    "Description": ["'Description' no debería estar vacío."]
+  }
+}
+```
+
+La regla `AssetId` es un `MustAsync` que consulta `IAssetRepository` de
+verdad — no es solo "¿es mayor que cero?", sino "¿existe ese activo?". Esto
+es lo que en un proyecto real le pediría a un cliente ajustar caso por caso:
+las reglas de formato (longitudes, campos requeridos) casi nunca cambian,
+pero las reglas de negocio (¿qué hace único a un código de activo?, ¿puede
+haber dos órdenes abiertas para el mismo activo?) sí dependen de cómo
+trabaja cada cliente, y viven en su propio validador, aislado del resto.
+
 ## Cómo correrlo
 
 Requiere [.NET 10 SDK](https://dotnet.microsoft.com/download) y SQL Server
@@ -182,7 +232,7 @@ manual entre medio.
 dotnet test
 ```
 
-13 tests con xUnit y Moq — sin tocar la base de datos real ni el reloj del
+27 tests con xUnit y Moq — sin tocar la base de datos real ni el reloj del
 sistema, y sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
 - `SyncWorkOrderCommandHandler`: éxito directo, que una orden ya sincronizada
@@ -201,6 +251,15 @@ sistema, y sin esperar tiempo real salvo donde se prueba backoff de verdad:
   `Pending` mientras no llegue al máximo de intentos, y que al llegar pasa a
   `Failed` — la regla vive en la entidad, no en una consulta de la capa de
   persistencia.
+- `ValidationBehavior`: sin validadores registrados no interfiere, con uno
+  que pasa deja seguir al handler, y con uno que falla lanza
+  `ValidationException` **sin** llegar a llamar al handler.
+- `CreateAssetCommandValidator` / `CreateWorkOrderCommandValidator`: campos
+  vacíos, longitudes fuera de rango, y el caso async — un `AssetId` que no
+  existe en la base de datos (con `IAssetRepository` mockeado).
+- `CreateAssetCommandHandler` / `CreateWorkOrderCommandHandler`: que
+  persisten la entidad correcta y usan el reloj inyectado, no
+  `DateTime.UtcNow` directo.
 
 ## Decisiones fuera de alcance (a propósito)
 
@@ -213,3 +272,6 @@ sistema, y sin esperar tiempo real salvo donde se prueba backoff de verdad:
 - El outbox está acoplado a `WorkOrder` en vez de ser genérico para
   cualquier tipo de evento; una versión más general guardaría un tipo de
   mensaje y un payload serializado.
+- El manejo de errores solo traduce `ValidationException` a un `400`
+  detallado; cualquier otra excepción cae a un `500` genérico. Un mapa
+  completo de excepciones de dominio a `ProblemDetails` queda pendiente.
