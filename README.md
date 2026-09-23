@@ -141,6 +141,18 @@ dotnet run --project src/AssetSync.Api
 La cadena de conexión por defecto (`appsettings.json`) apunta a
 `(localdb)\MSSQLLocalDB`.
 
+### Interfaz visual (Scalar)
+
+Con la API corriendo en modo desarrollo, `/scalar/v1` sirve una interfaz
+visual (generada a partir del documento OpenAPI que expone `/openapi/v1.json`)
+para explorar y probar cada endpoint sin Postman ni curl: request/response de
+ejemplo, esquemas de cada modelo, y un botón para ejecutar la llamada real
+contra la API que está corriendo.
+
+```
+http://localhost:5188/scalar/v1
+```
+
 ### Endpoints principales
 
 | Método | Ruta | Qué hace |
