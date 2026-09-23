@@ -153,6 +153,8 @@ contra la API que está corriendo.
 http://localhost:5188/scalar/v1
 ```
 
+![Interfaz visual Scalar mostrando los endpoints de AssetSync.Api](docs/scalar-ui.png)
+
 ### Endpoints principales
 
 | Método | Ruta | Qué hace |
