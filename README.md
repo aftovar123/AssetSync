@@ -147,10 +147,25 @@ segundos después el `OutboxProcessor` ya la sincronizó.
 
 ![Test Request en vivo contra GET /work-orders mostrando isSynced en true tras la sincronización](docs/workorders-live.png)
 
+### Health checks
+
+`GET /health` no solo confirma que el proceso está vivo: incluye un check de
+`SQL Server` (`CanConnectAsync`) y uno propio del dominio, `outbox`, que se
+pone en `Degraded` si algún mensaje llegó a `Failed` (agotó sus reintentos) —
+algo que un simple ping a la base de datos nunca revelaría.
+
+```json
+{"status":"Healthy","checks":[
+  {"name":"database","status":"Healthy","description":"SQL Server reachable."},
+  {"name":"outbox","status":"Healthy","description":"No dead-lettered outbox messages."}
+]}
+```
+
 ### Endpoints principales
 
 | Método | Ruta | Qué hace |
 |---|---|---|
+| `GET` | `/health` | Estado de la API, la base de datos y el outbox |
 | `POST` | `/assets` | Crea un activo |
 | `POST` | `/work-orders` | Crea una orden de trabajo |
 | `POST` | `/work-orders/{id}/complete` | Marca completada y encola la sincronización (202 inmediato) |
@@ -163,7 +178,7 @@ segundos después el `OutboxProcessor` ya la sincronizó.
 dotnet test
 ```
 
-31 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
+34 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
 sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
 - **Outbox y sincronización**: `SyncWorkOrderCommandHandler`,
@@ -178,6 +193,8 @@ sin esperar tiempo real salvo donde se prueba backoff de verdad:
   (400/404/500 según el tipo de excepción).
 - **Comandos de creación**: que los handlers persisten la entidad correcta
   usando el reloj inyectado, no `DateTime.UtcNow` directo.
+- **Health checks**: `outbox` pasa a `Degraded` con mensajes `Failed` y se
+  mantiene `Healthy` sin ellos (EF Core InMemory, sin SQL Server real).
 
 ## Decisiones fuera de alcance (a propósito)
 

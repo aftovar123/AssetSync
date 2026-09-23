@@ -5,11 +5,14 @@ using AssetSync.Application.Integration;
 using AssetSync.Application.WorkOrders;
 using AssetSync.Domain;
 using AssetSync.Infrastructure;
+using AssetSync.Infrastructure.Health;
 using AssetSync.Infrastructure.Integration;
 using FluentValidation;
 using MediatR;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +28,10 @@ builder.Services.AddValidatorsFromAssembly(typeof(AssetSync.Application.Assembly
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
+
+builder.Services.AddHealthChecks()
+    .AddCheck<DatabaseHealthCheck>("database")
+    .AddCheck<OutboxHealthCheck>("outbox");
 
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<IAssetRepository, AssetRepository>();
@@ -50,6 +57,29 @@ app.UseHttpsRedirection();
 // Delegates to GlobalExceptionHandler: ValidationException -> 400,
 // NotFoundException -> 404, anything else -> 500. See that class for why.
 app.UseExceptionHandler();
+
+// 200 when every check is Healthy or Degraded, 503 when any is Unhealthy —
+// the default HealthCheckOptions status-code mapping.
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var payload = new
+        {
+            status = report.Status.ToString(),
+            totalDurationMs = report.TotalDuration.TotalMilliseconds,
+            checks = report.Entries.Select(e => new
+            {
+                name = e.Key,
+                status = e.Value.Status.ToString(),
+                description = e.Value.Description,
+                durationMs = e.Value.Duration.TotalMilliseconds,
+            }),
+        };
+        await context.Response.WriteAsync(JsonSerializer.Serialize(payload));
+    },
+});
 
 app.MapGet("/assets", async (AssetSyncDbContext db) =>
     await db.Assets.ToListAsync())
