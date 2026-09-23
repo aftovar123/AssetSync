@@ -133,6 +133,19 @@ dotnet run --project src/AssetSync.Api
 
 La cadena de conexión por defecto (`appsettings.json`) apunta a `(localdb)\MSSQLLocalDB`.
 
+### Docker
+
+```bash
+docker build -t assetsync-api .
+docker run -p 8080:8080 -e ConnectionStrings__AssetSyncDb="<tu cadena de SQL Server>" assetsync-api
+```
+
+`LocalDB` es exclusivo de Windows y no corre dentro de un contenedor Linux, así
+que hay que apuntar `ConnectionStrings__AssetSyncDb` a un SQL Server real
+(local, en otro contenedor, o en la nube). El Dockerfile se construye y se
+valida en cada push mediante GitHub Actions — no hace falta tener Docker
+instalado localmente para trabajar en el proyecto día a día.
+
 ### Interfaz visual (Scalar)
 
 En desarrollo, `/scalar/v1` sirve una interfaz visual (generada desde
