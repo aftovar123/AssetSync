@@ -12,9 +12,15 @@ using MediatR;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
+using Serilog;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((context, services, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .ReadFrom.Services(services)
+    .Enrich.FromLogContext());
 
 builder.Services.AddOpenApi();
 builder.Services.AddDbContext<AssetSyncDbContext>(options =>
@@ -45,6 +51,12 @@ builder.Services.AddScoped<INotificationService, ConsoleNotificationService>();
 builder.Services.AddHostedService<OutboxProcessor>();
 
 var app = builder.Build();
+
+// One structured log line per request (method, path, status, elapsed) —
+// separate from the per-feature logging already in ResilientErpClient and
+// GlobalExceptionHandler, which flow through the same Serilog pipeline
+// without any code change since they just use ILogger<T>.
+app.UseSerilogRequestLogging();
 
 if (app.Environment.IsDevelopment())
 {

@@ -184,6 +184,22 @@ algo que un simple ping a la base de datos nunca revelaría.
 ]}
 ```
 
+### Logging estructurado (Serilog)
+
+Reemplaza el logger por defecto de ASP.NET Core — configurado por completo
+desde `appsettings.json` (nivel mínimo, sinks, overrides por namespace), no
+hardcodeado en `Program.cs`. Dos sinks activos: consola y un archivo rotado
+por día (`logs/assetsync-YYYYMMDD.log`, se conservan 14 días). Todo lo que
+ya usaba `ILogger<T>` — los reintentos de `ResilientErpClient`, el
+`GlobalExceptionHandler`, el `OutboxProcessor` — pasó a fluir por Serilog sin
+tocar una sola línea de esos archivos, más `UseSerilogRequestLogging()` para
+una línea estructurada por request (método, ruta, código, duración):
+
+```
+[08:44:36 INF] HTTP GET /assets responded 200 in 496.8430 ms
+[08:44:59 INF] Outbox processor handled 1 pending message(s).
+```
+
 ### Endpoints principales
 
 | Método | Ruta | Qué hace |
