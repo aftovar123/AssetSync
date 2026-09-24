@@ -41,6 +41,20 @@ public class OutboxMessageTests
     }
 
     [Fact]
+    public void RecordFailedAttempt_WhileProcessing_ResetsToPendingForRetry()
+    {
+        var message = MakeMessage();
+        message.Status = OutboxMessageStatus.Processing;
+        message.ClaimedAt = DateTime.UtcNow;
+
+        message.RecordFailedAttempt("timeout");
+
+        // Back to Pending, not stuck in Processing — the next poll (from
+        // this instance or another) can claim and retry it.
+        Assert.Equal(OutboxMessageStatus.Pending, message.Status);
+    }
+
+    [Fact]
     public void MarkProcessed_SetsStatusAndTimestamp()
     {
         var message = MakeMessage();

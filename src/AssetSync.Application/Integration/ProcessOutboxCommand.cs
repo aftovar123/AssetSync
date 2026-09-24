@@ -17,10 +17,11 @@ public class ProcessOutboxCommandHandler(
     IClock clock) : IRequestHandler<ProcessOutboxCommand, int>
 {
     private const int BatchSize = 10;
+    private static readonly TimeSpan StaleClaimThreshold = TimeSpan.FromMinutes(2);
 
     public async Task<int> Handle(ProcessOutboxCommand request, CancellationToken cancellationToken)
     {
-        var pending = await outboxRepository.GetPendingAsync(BatchSize, cancellationToken);
+        var pending = await outboxRepository.ClaimPendingAsync(BatchSize, StaleClaimThreshold, cancellationToken);
 
         foreach (var message in pending)
         {

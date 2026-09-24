@@ -19,7 +19,7 @@ public class ProcessOutboxCommandHandlerTests
     public async Task Handle_SuccessfulSync_MarksMessageProcessed()
     {
         var message = new OutboxMessage { Id = 1, WorkOrderId = 5, CreatedAt = _fixedNow.AddMinutes(-5) };
-        _outboxRepository.Setup(o => o.GetPendingAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _outboxRepository.Setup(o => o.ClaimPendingAsync(It.IsAny<int>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([message]);
         _sender.Setup(s => s.Send(It.Is<SyncWorkOrderCommand>(c => c.WorkOrderId == 5), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SyncWorkOrderResult(true, "abc123", null));
@@ -37,7 +37,7 @@ public class ProcessOutboxCommandHandlerTests
     public async Task Handle_FailedSync_RecordsFailedAttemptWithoutExhaustingRetries()
     {
         var message = new OutboxMessage { Id = 2, WorkOrderId = 7, CreatedAt = _fixedNow.AddMinutes(-5) };
-        _outboxRepository.Setup(o => o.GetPendingAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _outboxRepository.Setup(o => o.ClaimPendingAsync(It.IsAny<int>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([message]);
         _sender.Setup(s => s.Send(It.Is<SyncWorkOrderCommand>(c => c.WorkOrderId == 7), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new SyncWorkOrderResult(false, "def456", "ERP unreachable"));
@@ -54,7 +54,7 @@ public class ProcessOutboxCommandHandlerTests
     [Fact]
     public async Task Handle_NoPendingMessages_DoesNothing()
     {
-        _outboxRepository.Setup(o => o.GetPendingAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+        _outboxRepository.Setup(o => o.ClaimPendingAsync(It.IsAny<int>(), It.IsAny<TimeSpan>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync([]);
 
         var handler = CreateHandler();

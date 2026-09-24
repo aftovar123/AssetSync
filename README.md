@@ -56,6 +56,16 @@ Si el mensaje sigue fallando tras 5 intentos, `OutboxMessage` se marca a sí
 mismo como `Failed` — una regla del dominio, no una consulta implícita — y
 deja de reintentarse para siempre.
 
+**Claim atómico.** Tomar el mensaje pendiente y reintentarlo son dos pasos
+distintos: si dos instancias de `OutboxProcessor` corrieran a la vez, un
+simple `SELECT` seguido de un `UPDATE` dejaría una ventana donde ambas
+podrían tomar el mismo mensaje y sincronizarlo dos veces. `ClaimPendingAsync`
+lo resuelve con un solo `UPDATE ... OUTPUT` — atómico en SQL Server — que
+mueve el mensaje a `Processing` y lo devuelve en la misma sentencia. Un
+mensaje que quedó en `Processing` más de 2 minutos (su instancia se cayó a
+mitad del proceso) vuelve a estar disponible para reclamarse, en vez de
+perderse para siempre.
+
 ```mermaid
 sequenceDiagram
     actor Client
@@ -191,13 +201,14 @@ algo que un simple ping a la base de datos nunca revelaría.
 dotnet test
 ```
 
-34 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
+35 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
 sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
 - **Outbox y sincronización**: `SyncWorkOrderCommandHandler`,
   `CompleteWorkOrderCommandHandler`, `ProcessOutboxCommandHandler` y
-  `OutboxMessage` (dominio puro) — éxito, duplicados, fallos, y la regla de
-  `Failed` tras el máximo de intentos.
+  `OutboxMessage` (dominio puro) — éxito, duplicados, fallos, la regla de
+  `Failed` tras el máximo de intentos, y que un reintento fallido pero por
+  debajo del máximo vuelve a `Pending` (no se queda atascado en `Processing`).
 - **Resiliencia**: `ResilientErpClient` reintenta ante fallos transitorios
   con el mismo código de idempotencia, y se rinde tras los intentos configurados.
 - **Validación y errores**: `ValidationBehavior`, los validadores de

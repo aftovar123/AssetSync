@@ -3,6 +3,7 @@ namespace AssetSync.Domain;
 public enum OutboxMessageStatus
 {
     Pending,
+    Processing,
     Processed,
     Failed,
 }
@@ -26,6 +27,13 @@ public class OutboxMessage
     public string? LastError { get; set; }
     public OutboxMessageStatus Status { get; set; } = OutboxMessageStatus.Pending;
 
+    /// <summary>
+    /// Set when a processor claims this message (status moves to
+    /// Processing). Lets a later poll tell a message someone is actively
+    /// working on apart from one whose claimer crashed and never finished.
+    /// </summary>
+    public DateTime? ClaimedAt { get; set; }
+
     public void MarkProcessed(DateTime processedAt)
     {
         Status = OutboxMessageStatus.Processed;
@@ -33,19 +41,16 @@ public class OutboxMessage
     }
 
     /// <summary>
-    /// Records one more failed attempt. Once it reaches MaxAttempts, the
-    /// message stops being picked up by the poll — it needs a human to
-    /// look at it instead of retrying forever against something that
-    /// clearly isn't going to start working.
+    /// Records one more failed attempt. Below MaxAttempts it goes back to
+    /// Pending so the next poll retries it; at MaxAttempts it stops being
+    /// picked up at all — it needs a human to look at it instead of
+    /// retrying forever against something that clearly isn't going to
+    /// start working.
     /// </summary>
     public void RecordFailedAttempt(string error)
     {
         Attempts++;
         LastError = error;
-
-        if (Attempts >= MaxAttempts)
-        {
-            Status = OutboxMessageStatus.Failed;
-        }
+        Status = Attempts >= MaxAttempts ? OutboxMessageStatus.Failed : OutboxMessageStatus.Pending;
     }
 }
