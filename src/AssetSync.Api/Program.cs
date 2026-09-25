@@ -10,10 +10,12 @@ using AssetSync.Infrastructure.Integration;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Scalar.AspNetCore;
 using Serilog;
 using System.Text.Json;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -50,6 +52,23 @@ builder.Services.AddScoped<IExternalErpClient>(sp => new ResilientErpClient(
 builder.Services.AddScoped<INotificationService, ConsoleNotificationService>();
 builder.Services.AddHostedService<OutboxProcessor>();
 
+// Fixed window per client IP, no queueing: once an IP hits the limit within
+// the window it gets 429s immediately instead of piling up threads on the
+// free-tier App Service plan.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+});
+
 var app = builder.Build();
 
 // One structured log line per request (method, path, status, elapsed) —
@@ -65,6 +84,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseRateLimiter();
 
 // Delegates to GlobalExceptionHandler: ValidationException -> 400,
 // NotFoundException -> 404, anything else -> 500. See that class for why.
@@ -91,7 +111,7 @@ app.MapHealthChecks("/health", new HealthCheckOptions
         };
         await context.Response.WriteAsync(JsonSerializer.Serialize(payload));
     },
-});
+}).DisableRateLimiting();
 
 app.MapGet("/assets", async (AssetSyncDbContext db) =>
     await db.Assets.ToListAsync())

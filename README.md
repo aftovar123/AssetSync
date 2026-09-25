@@ -199,6 +199,16 @@ algo que un simple ping a la base de datos nunca revelaría.
 ]}
 ```
 
+### Rate limiting
+
+Cada endpoint (salvo `/health`, que Azure y las herramientas de monitoreo
+necesitan llamar sin restricción) aplica un límite de **60 peticiones por
+minuto por dirección IP**, con ventana fija y sin cola: al superar el límite,
+la petición 61 en adelante recibe `429 Too Many Requests` de inmediato, sin
+encolarse ni consumir hilos del plan gratuito de App Service. Verificado en
+vivo: 60 peticiones seguidas a `/assets` devuelven `200`, la 61 en adelante
+devuelve `429`, y `/health` sigue respondiendo `200` durante todo el proceso.
+
 ### Logging estructurado (Serilog)
 
 Reemplaza el logger por defecto de ASP.NET Core — configurado por completo
