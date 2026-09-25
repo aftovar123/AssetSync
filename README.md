@@ -9,6 +9,21 @@ forma confiable incluso cuando la red falla o el proceso se cae a mitad de
 camino. Construido para demostrar Clean Architecture, CQRS con MediatR, y el
 patrón Transactional Outbox — no un CRUD de ejemplo más.
 
+## Despliegue en producción (Azure)
+
+Corre en vivo en Azure App Service (Linux, .NET 10) conectado a Azure SQL
+Database, con CI/CD real desde GitHub Actions: cada push a `main` compila,
+publica y despliega automáticamente, sin pasos manuales.
+
+**Health check en vivo:** https://assetsync-api-andres-g5etgpdsc2hfccd6.westus3-01.azurewebsites.net/health
+
+Corre en el nivel gratuito de Azure (App Service F1 + SQL Database
+serverless), así que la primera petición tras un rato de inactividad puede
+tardar unos segundos extra mientras el App Service y la base de datos
+"despiertan" — comportamiento esperado de ese nivel, no un error. La
+interfaz de Scalar solo está habilitada en desarrollo (buena práctica: no se
+expone documentación interactiva de la API en un entorno público).
+
 ## Arquitectura
 
 ```
