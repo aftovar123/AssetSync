@@ -17,10 +17,11 @@ public class SyncWorkOrderCommandHandlerTests
     private readonly Mock<IWorkOrderRepository> _repository = new();
     private readonly Mock<IExternalErpClient> _erpClient = new();
     private readonly Mock<INotificationService> _notifications = new();
+    private readonly Mock<IEventPublisher> _eventPublisher = new();
     private readonly DateTime _fixedNow = new(2026, 9, 22, 10, 0, 0, DateTimeKind.Utc);
 
     private SyncWorkOrderCommandHandler CreateHandler() =>
-        new(_repository.Object, _erpClient.Object, _notifications.Object, new FixedClock(_fixedNow));
+        new(_repository.Object, _erpClient.Object, _notifications.Object, _eventPublisher.Object, new FixedClock(_fixedNow));
 
     private static WorkOrder MakeWorkOrder(bool isSynced = false) => new()
     {
@@ -48,6 +49,9 @@ public class SyncWorkOrderCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(n => n.NotifySuccessAsync(result.SubmissionCode, It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(n => n.NotifyFailureAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _eventPublisher.Verify(p => p.PublishAsync(
+            It.Is<WorkOrderSyncedEvent>(e => e.WorkOrderId == workOrder.Id && e.SubmissionCode == result.SubmissionCode && e.SyncedAt == _fixedNow),
+            It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -73,6 +77,7 @@ public class SyncWorkOrderCommandHandlerTests
         Assert.True(result.Success);
         _erpClient.Verify(c => c.SubmitWorkOrderAsync(It.IsAny<WorkOrder>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
         _repository.Verify(r => r.AddIntegrationLogAsync(It.IsAny<IntegrationLog>(), It.IsAny<CancellationToken>()), Times.Never);
+        _eventPublisher.Verify(p => p.PublishAsync(It.IsAny<WorkOrderSyncedEvent>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     [Fact]
@@ -98,5 +103,6 @@ public class SyncWorkOrderCommandHandlerTests
             It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(n => n.NotifyFailureAsync(result.SubmissionCode, "ERP unreachable", It.IsAny<CancellationToken>()), Times.Once);
         _notifications.Verify(n => n.NotifySuccessAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+        _eventPublisher.Verify(p => p.PublishAsync(It.IsAny<WorkOrderSyncedEvent>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 }

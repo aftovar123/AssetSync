@@ -7,6 +7,7 @@ using AssetSync.Domain;
 using AssetSync.Infrastructure;
 using AssetSync.Infrastructure.Health;
 using AssetSync.Infrastructure.Integration;
+using AssetSync.Infrastructure.Messaging;
 using FluentValidation;
 using MediatR;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -39,7 +40,8 @@ builder.Services.AddProblemDetails();
 
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database")
-    .AddCheck<OutboxHealthCheck>("outbox");
+    .AddCheck<OutboxHealthCheck>("outbox")
+    .AddCheck<MessagingHealthCheck>("messaging");
 
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddScoped<IAssetRepository, AssetRepository>();
@@ -50,7 +52,10 @@ builder.Services.AddScoped<IExternalErpClient>(sp => new ResilientErpClient(
     sp.GetRequiredService<SimulatedErpClient>(),
     sp.GetRequiredService<ILogger<ResilientErpClient>>()));
 builder.Services.AddScoped<INotificationService, ConsoleNotificationService>();
+builder.Services.AddSingleton<RabbitMqEventPublisher>();
+builder.Services.AddSingleton<IEventPublisher>(sp => sp.GetRequiredService<RabbitMqEventPublisher>());
 builder.Services.AddHostedService<OutboxProcessor>();
+builder.Services.AddHostedService<WorkOrderSyncedConsumer>();
 
 // Fixed window per client IP, no queueing: once an IP hits the limit within
 // the window it gets 429s immediately instead of piling up threads on the

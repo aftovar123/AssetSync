@@ -158,11 +158,23 @@ dotnet run --project src/AssetSync.Api
 
 La cadena de conexión por defecto (`appsettings.json`) apunta a `(localdb)\MSSQLLocalDB`.
 
+RabbitMQ es opcional en desarrollo: sin configurar, la API corre igual —
+`messaging` simplemente aparece `Degraded` en `/health` (ver sección de
+arquitectura orientada a eventos). Para probarlo localmente, con
+[User Secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets):
+
+```bash
+dotnet user-secrets set "RabbitMq:ConnectionString" "<tu AMQP URL>" --project src/AssetSync.Api
+```
+
 ### Docker
 
 ```bash
 docker build -t assetsync-api .
-docker run -p 8080:8080 -e ConnectionStrings__AssetSyncDb="<tu cadena de SQL Server>" assetsync-api
+docker run -p 8080:8080 \
+  -e ConnectionStrings__AssetSyncDb="<tu cadena de SQL Server>" \
+  -e RabbitMq__ConnectionString="<tu AMQP URL>" \
+  assetsync-api
 ```
 
 `LocalDB` es exclusivo de Windows y no corre dentro de un contenedor Linux, así
@@ -198,6 +210,32 @@ algo que un simple ping a la base de datos nunca revelaría.
   {"name":"outbox","status":"Healthy","description":"No dead-lettered outbox messages."}
 ]}
 ```
+
+### Arquitectura orientada a eventos (RabbitMQ)
+
+Cuando `SyncWorkOrderCommandHandler` sincroniza una orden de trabajo con
+éxito, publica un `WorkOrderSyncedEvent` a una cola de RabbitMQ (probado
+contra una instancia gratuita de [CloudAMQP](https://www.cloudamqp.com/),
+sobre LavinMQ — mismo protocolo AMQP 0.9.1, mismo cliente .NET) — separado
+tanto de `IExternalErpClient` (que habla con el sistema externo) como de
+`INotificationService` (que avisa a una persona). Otros sistemas
+(reportes, analítica, servicios corriente abajo) pueden suscribirse sin
+tener que sondear la base de datos ni el ERP.
+
+Es **best-effort a propósito**: si el broker de mensajería falla o no está
+configurado, `RabbitMqEventPublisher` registra una advertencia y continúa
+— nunca hace que se reporte como fallida una sincronización con el ERP que
+en realidad sí tuvo éxito. Por la misma razón, el health check de
+`messaging` responde `Degraded` (no `Unhealthy`) cuando el broker no está
+disponible, para no tumbar todo `/health` a `503` por un problema en una
+función complementaria.
+
+`WorkOrderSyncedConsumer` (un `BackgroundService` más, mismo patrón que
+`OutboxProcessor`) se suscribe a esa misma cola dentro del propio proceso —
+arquitectónicamente idéntico a un servicio separado — y confirma que el
+evento efectivamente se recibió. Verificado en vivo contra una instancia
+real: se crea una orden, se completa, y segundos después el log muestra
+`WorkOrderSyncedEvent received: work order 9, submission ..., synced at ...`.
 
 ### Rate limiting
 

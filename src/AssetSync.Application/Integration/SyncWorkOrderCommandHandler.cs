@@ -16,6 +16,7 @@ public class SyncWorkOrderCommandHandler(
     IWorkOrderRepository repository,
     IExternalErpClient erpClient,
     INotificationService notifications,
+    IEventPublisher eventPublisher,
     IClock clock) : IRequestHandler<SyncWorkOrderCommand, SyncWorkOrderResult>
 {
     public async Task<SyncWorkOrderResult> Handle(SyncWorkOrderCommand request, CancellationToken cancellationToken)
@@ -46,6 +47,9 @@ public class SyncWorkOrderCommandHandler(
             await repository.SaveChangesAsync(cancellationToken);
 
             await notifications.NotifySuccessAsync(submissionCode, cancellationToken);
+            await eventPublisher.PublishAsync(
+                new WorkOrderSyncedEvent(workOrder.Id, submissionCode, clock.UtcNow),
+                cancellationToken);
             return new SyncWorkOrderResult(true, submissionCode, null);
         }
         catch (Exception ex)
