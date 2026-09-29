@@ -309,3 +309,8 @@ sin esperar tiempo real salvo donde se prueba backoff de verdad:
 - El mapa de errores cubre validación y "no encontrado"; excepciones de
   negocio más específicas (conflictos, reglas de estado) seguirían cayendo
   al `500` genérico hasta que el proyecto las necesite.
+
+
+## Licencia
+
+© 2026 Andrés Tovar Sandoval. Todos los derechos reservados. El código se publica solo como portafolio, para consulta y evaluación; no se permite copiarlo, modificarlo, redistribuirlo ni usarlo sin autorización escrita del autor. Ver [LICENSE](LICENSE).
