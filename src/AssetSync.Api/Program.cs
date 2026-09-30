@@ -45,8 +45,17 @@ builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document,
     document.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("Bearer", document)] = [] }];
     return Task.CompletedTask;
 }));
+// Retries transient SQL failures (deadlock victims, dropped connections, and
+// the Azure SQL serverless database still waking up from auto-pause) with
+// exponential backoff, instead of surfacing them as 500s. Every write here
+// is a single SaveChanges, so there is no user transaction to wrap manually.
 builder.Services.AddDbContext<AssetSyncDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("AssetSyncDb")));
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("AssetSyncDb"),
+        sql => sql.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(10),
+            errorNumbersToAdd: null)));
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssembly(typeof(AssetSync.Application.AssemblyMarker).Assembly);
@@ -171,8 +180,10 @@ app.MapTokenEndpoint();
 // Reads stay public so the live demo can be browsed without credentials;
 // every endpoint that changes data requires a token with the write scope.
 
-app.MapGet("/assets", async (AssetSyncDbContext db) =>
-    await db.Assets.ToListAsync())
+// List endpoints are paginated (?page=1&pageSize=20, capped at 100) and
+// read-only, so they skip change tracking. See Pagination.
+app.MapGet("/assets", async (int? page, int? pageSize, AssetSyncDbContext db, CancellationToken ct) =>
+    await db.Assets.OrderBy(a => a.Id).ToPagedResultAsync(page, pageSize, ct))
     .WithName("GetAssets");
 
 app.MapPost("/assets", async (CreateAssetCommand command, ISender sender) =>
@@ -183,8 +194,8 @@ app.MapPost("/assets", async (CreateAssetCommand command, ISender sender) =>
     .WithName("CreateAsset")
     .RequireAuthorization(AuthPolicies.WriteAccess);
 
-app.MapGet("/work-orders", async (AssetSyncDbContext db) =>
-    await db.WorkOrders.ToListAsync())
+app.MapGet("/work-orders", async (int? page, int? pageSize, AssetSyncDbContext db, CancellationToken ct) =>
+    await db.WorkOrders.OrderByDescending(w => w.CreatedAt).ThenByDescending(w => w.Id).ToPagedResultAsync(page, pageSize, ct))
     .WithName("GetWorkOrders");
 
 app.MapPost("/work-orders", async (CreateWorkOrderCommand command, ISender sender) =>
@@ -207,12 +218,15 @@ app.MapPost("/work-orders/{id:int}/complete", async (int id, ISender sender) =>
     .WithName("CompleteWorkOrder")
     .RequireAuthorization(AuthPolicies.WriteAccess);
 
-app.MapGet("/work-orders/{id:int}/integration-logs", async (int id, AssetSyncDbContext db) =>
-    await db.IntegrationLogs.Where(l => l.WorkOrderId == id).OrderByDescending(l => l.AttemptedAt).ToListAsync())
+app.MapGet("/work-orders/{id:int}/integration-logs", async (int id, int? page, int? pageSize, AssetSyncDbContext db, CancellationToken ct) =>
+    await db.IntegrationLogs.Where(l => l.WorkOrderId == id)
+        .OrderByDescending(l => l.AttemptedAt).ThenByDescending(l => l.Id)
+        .ToPagedResultAsync(page, pageSize, ct))
     .WithName("GetWorkOrderIntegrationLogs");
 
-app.MapGet("/outbox", async (AssetSyncDbContext db) =>
-    await db.OutboxMessages.OrderByDescending(m => m.CreatedAt).ToListAsync())
+app.MapGet("/outbox", async (int? page, int? pageSize, AssetSyncDbContext db, CancellationToken ct) =>
+    await db.OutboxMessages.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
+        .ToPagedResultAsync(page, pageSize, ct))
     .WithName("GetOutboxMessages");
 
 app.Run();

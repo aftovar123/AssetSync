@@ -13,6 +13,7 @@ public record ProcessOutboxCommand : IRequest<int>;
 /// </summary>
 public class ProcessOutboxCommandHandler(
     IOutboxRepository outboxRepository,
+    IWorkOrderRepository workOrderRepository,
     ISender sender,
     IClock clock) : IRequestHandler<ProcessOutboxCommand, int>
 {
@@ -22,6 +23,15 @@ public class ProcessOutboxCommandHandler(
     public async Task<int> Handle(ProcessOutboxCommand request, CancellationToken cancellationToken)
     {
         var pending = await outboxRepository.ClaimPendingAsync(BatchSize, StaleClaimThreshold, cancellationToken);
+        if (pending.Count == 0)
+        {
+            return 0;
+        }
+
+        // One query for the whole batch. Without it, each SyncWorkOrderCommand
+        // below would fetch its own work order — N+1 queries per tick.
+        var workOrderIds = pending.Select(m => m.WorkOrderId).Distinct().ToArray();
+        await workOrderRepository.PreloadAsync(workOrderIds, cancellationToken);
 
         foreach (var message in pending)
         {

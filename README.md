@@ -258,6 +258,25 @@ encolarse ni consumir hilos del plan gratuito de App Service. Verificado en
 vivo: 60 peticiones seguidas a `/assets` devuelven `200`, la 61 en adelante
 devuelve `429`, y `/health` sigue respondiendo `200` durante todo el proceso.
 
+### Acceso a datos: reintentos, lotes y paginación
+
+- **Reintentos ante fallos transitorios.** `EnableRetryOnFailure` reintenta
+  con backoff exponencial los errores pasajeros de SQL Server — una
+  transacción elegida como víctima de un deadlock, una conexión caída, o la
+  base de datos serverless de Azure todavía despertando de su pausa
+  automática — en vez de devolver un `500`. Como cada escritura es un único
+  `SaveChanges`, no hay transacciones manuales que envolver.
+- **Una consulta por lote, no una por mensaje.** El procesador del outbox
+  toma hasta 10 mensajes por ciclo. Antes cada uno consultaba su orden de
+  trabajo por separado (el clásico N+1); ahora `PreloadAsync` las trae todas
+  en un solo `WHERE Id IN (...)` y `GetByIdAsync` las sirve desde el
+  *change tracker* de EF Core sin volver a la base de datos.
+- **Listados paginados.** Todos los `GET` de listas aceptan
+  `?page=1&pageSize=20` (máximo 100 por página) y responden
+  `{ items, page, pageSize, totalCount, totalPages }`, con un `ORDER BY`
+  estable y sin *change tracking*. Los valores fuera de rango se ajustan en
+  vez de rechazarse, así que ningún cliente puede pedir la tabla completa.
+
 ### Autenticación (JWT, OAuth2 client credentials)
 
 Todo endpoint que **modifica datos** exige un token; las lecturas y
@@ -326,13 +345,13 @@ una línea estructurada por request (método, ruta, código, duración):
 |---|---|---|---|
 | `GET` | `/health` | Estado de la API, la base de datos y el outbox | No |
 | `POST` | `/auth/token` | Emite un JWT (OAuth2 client credentials) | No |
-| `GET` | `/assets` | Lista los activos | No |
+| `GET` | `/assets` | Lista los activos (paginado) | No |
 | `POST` | `/assets` | Crea un activo | Sí |
-| `GET` | `/work-orders` | Lista las órdenes de trabajo | No |
+| `GET` | `/work-orders` | Lista las órdenes de trabajo (paginado) | No |
 | `POST` | `/work-orders` | Crea una orden de trabajo | Sí |
 | `POST` | `/work-orders/{id}/complete` | Marca completada y encola la sincronización (202 inmediato) | Sí |
-| `GET` | `/work-orders/{id}/integration-logs` | Historial de intentos de sincronización | No |
-| `GET` | `/outbox` | Estado de la cola de sincronización pendiente | No |
+| `GET` | `/work-orders/{id}/integration-logs` | Historial de intentos de sincronización (paginado) | No |
+| `GET` | `/outbox` | Estado de la cola de sincronización pendiente (paginado) | No |
 
 "Sí" = requiere `Authorization: Bearer <token>` con scope `assetsync.write`.
 
@@ -342,7 +361,7 @@ una línea estructurada por request (método, ruta, código, duración):
 dotnet test
 ```
 
-51 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
+62 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
 sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
 - **Outbox y sincronización**: `SyncWorkOrderCommandHandler`,
@@ -360,6 +379,11 @@ sin esperar tiempo real salvo donde se prueba backoff de verdad:
   usando el reloj inyectado, no `DateTime.UtcNow` directo.
 - **Health checks**: `outbox` pasa a `Degraded` con mensajes `Failed` y se
   mantiene `Healthy` sin ellos (EF Core InMemory, sin SQL Server real).
+- **Acceso a datos**: que el procesador del outbox precarga las órdenes de
+  su lote en una sola llamada, que tras esa precarga el repositorio responde
+  desde memoria (se borran las filas desde otro contexto y aun así las
+  devuelve), y la paginación: página por defecto, última página, página
+  fuera de rango, límites de `pageSize` y ausencia de *change tracking*.
 - **Autenticación**: `TokenService` (credenciales correctas/incorrectas/
   ausentes, token con los claims esperados, rechazo tras expirar o con otra
   clave, clave corta rechazada) y el endpoint `/auth/token` (body y HTTP
