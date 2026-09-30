@@ -167,6 +167,15 @@ arquitectura orientada a eventos). Para probarlo localmente, con
 dotnet user-secrets set "RabbitMq:ConnectionString" "<tu AMQP URL>" --project src/AssetSync.Api
 ```
 
+La autenticación JWT, en cambio, **sí es obligatoria**: sin clave de firma
+la API se niega a arrancar (ver sección de autenticación). Para desarrollo:
+
+```bash
+dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 48)" --project src/AssetSync.Api
+dotnet user-secrets set "Auth:ClientId" "erp-integration" --project src/AssetSync.Api
+dotnet user-secrets set "Auth:ClientSecret" "<un secreto largo>" --project src/AssetSync.Api
+```
+
 ### Docker
 
 ```bash
@@ -174,6 +183,8 @@ docker build -t assetsync-api .
 docker run -p 8080:8080 \
   -e ConnectionStrings__AssetSyncDb="<tu cadena de SQL Server>" \
   -e RabbitMq__ConnectionString="<tu AMQP URL>" \
+  -e Jwt__SigningKey="<clave de 32+ bytes>" \
+  -e Auth__ClientId="erp-integration" -e Auth__ClientSecret="<secreto>" \
   assetsync-api
 ```
 
@@ -247,6 +258,52 @@ encolarse ni consumir hilos del plan gratuito de App Service. Verificado en
 vivo: 60 peticiones seguidas a `/assets` devuelven `200`, la 61 en adelante
 devuelve `429`, y `/health` sigue respondiendo `200` durante todo el proceso.
 
+### Autenticación (JWT, OAuth2 client credentials)
+
+Todo endpoint que **modifica datos** exige un token; las lecturas y
+`/health` siguen públicas para que el demo en vivo se pueda explorar sin
+credenciales. El flujo es el estándar OAuth2 para comunicación
+máquina a máquina (*client credentials*, RFC 6749 §4.4) — el mismo que
+usaría el ERP para llamar a esta API:
+
+1. El cliente pide un token a `POST /auth/token` con
+   `grant_type=client_credentials`, `client_id` y `client_secret` (en el
+   formulario o como HTTP Basic).
+2. La API responde un **JWT firmado con HMAC-SHA256** que expira en 60
+   minutos, con el claim `scope=assetsync.write`.
+3. El cliente lo envía como `Authorization: Bearer <token>`. El middleware
+   `JwtBearer` valida firma, emisor, audiencia, algoritmo y expiración;
+   la política `WriteAccess` además exige el scope.
+
+```bash
+curl -X POST https://localhost:<puerto>/auth/token \
+  -d grant_type=client_credentials -d client_id=erp-integration -d client_secret=<secreto>
+# {"access_token":"eyJhbGciOiJIUzI1NiIs...","token_type":"Bearer","expires_in":3600,"scope":"assetsync.write"}
+```
+
+Decisiones de seguridad:
+
+- **Sin clave, no arranca.** Si `Jwt:SigningKey` falta o tiene menos de 32
+  bytes, la aplicación falla al iniciar en vez de correr con las escrituras
+  desprotegidas o firmadas con una clave por defecto adivinable.
+- **Secretos fuera de git**: user-secrets en local, configuración del App
+  Service en Azure (`Jwt__SigningKey`, `Auth__ClientId`,
+  `Auth__ClientSecret`).
+- **Comparación en tiempo constante** de las credenciales
+  (`CryptographicOperations.FixedTimeEquals` sobre hashes), para no filtrar
+  por tiempo de respuesta cuántos caracteres coinciden.
+- **Errores en formato OAuth2** (`invalid_client`, `unsupported_grant_type`)
+  y `Cache-Control: no-store` en la respuesta del token, como pide el RFC.
+- El intento de fuerza bruta contra `/auth/token` queda acotado por el
+  mismo rate limiting de 60 peticiones por minuto por IP.
+- Scalar declara el esquema Bearer, así que se puede pegar el token en su
+  botón de autorización y probar los `POST` desde la interfaz.
+
+Verificado localmente: `POST /assets` sin token → `401`; secreto incorrecto
+→ `401 invalid_client`; con token válido la petición pasa la autenticación
+y llega a la validación de FluentValidation; un token alterado → `401`;
+`/health` responde sin token.
+
 ### Logging estructurado (Serilog)
 
 Reemplaza el logger por defecto de ASP.NET Core — configurado por completo
@@ -265,14 +322,19 @@ una línea estructurada por request (método, ruta, código, duración):
 
 ### Endpoints principales
 
-| Método | Ruta | Qué hace |
-|---|---|---|
-| `GET` | `/health` | Estado de la API, la base de datos y el outbox |
-| `POST` | `/assets` | Crea un activo |
-| `POST` | `/work-orders` | Crea una orden de trabajo |
-| `POST` | `/work-orders/{id}/complete` | Marca completada y encola la sincronización (202 inmediato) |
-| `GET` | `/work-orders/{id}/integration-logs` | Historial de intentos de sincronización |
-| `GET` | `/outbox` | Estado de la cola de sincronización pendiente |
+| Método | Ruta | Qué hace | Token |
+|---|---|---|---|
+| `GET` | `/health` | Estado de la API, la base de datos y el outbox | No |
+| `POST` | `/auth/token` | Emite un JWT (OAuth2 client credentials) | No |
+| `GET` | `/assets` | Lista los activos | No |
+| `POST` | `/assets` | Crea un activo | Sí |
+| `GET` | `/work-orders` | Lista las órdenes de trabajo | No |
+| `POST` | `/work-orders` | Crea una orden de trabajo | Sí |
+| `POST` | `/work-orders/{id}/complete` | Marca completada y encola la sincronización (202 inmediato) | Sí |
+| `GET` | `/work-orders/{id}/integration-logs` | Historial de intentos de sincronización | No |
+| `GET` | `/outbox` | Estado de la cola de sincronización pendiente | No |
+
+"Sí" = requiere `Authorization: Bearer <token>` con scope `assetsync.write`.
 
 ## Tests
 
@@ -280,7 +342,7 @@ una línea estructurada por request (método, ruta, código, duración):
 dotnet test
 ```
 
-35 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
+51 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
 sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
 - **Outbox y sincronización**: `SyncWorkOrderCommandHandler`,
@@ -298,12 +360,19 @@ sin esperar tiempo real salvo donde se prueba backoff de verdad:
   usando el reloj inyectado, no `DateTime.UtcNow` directo.
 - **Health checks**: `outbox` pasa a `Degraded` con mensajes `Failed` y se
   mantiene `Healthy` sin ellos (EF Core InMemory, sin SQL Server real).
+- **Autenticación**: `TokenService` (credenciales correctas/incorrectas/
+  ausentes, token con los claims esperados, rechazo tras expirar o con otra
+  clave, clave corta rechazada) y el endpoint `/auth/token` (body y HTTP
+  Basic, `invalid_client`, `unsupported_grant_type`, `no-store`).
 
 ## Decisiones fuera de alcance (a propósito)
 
 - El cliente ERP y el servicio de notificaciones son simulados para que el
   proyecto corra sin credenciales externas.
-- Sin autenticación ni autorización — no es el foco de este proyecto.
+- Un solo cliente configurado y tokens emitidos por la propia API, sin
+  refresh tokens ni un proveedor de identidad externo (Entra ID, Auth0):
+  suficiente para demostrar el flujo client credentials de punta a punta
+  sin depender de un servicio de pago.
 - El outbox está acoplado a `WorkOrder` en vez de ser genérico para
   cualquier tipo de evento.
 - El mapa de errores cubre validación y "no encontrado"; excepciones de

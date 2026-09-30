@@ -1,4 +1,5 @@
 using AssetSync.Api;
+using AssetSync.Api.Auth;
 using AssetSync.Application.Assets;
 using AssetSync.Application.Common.Behaviors;
 using AssetSync.Application.Integration;
@@ -10,9 +11,12 @@ using AssetSync.Infrastructure.Integration;
 using AssetSync.Infrastructure.Messaging;
 using FluentValidation;
 using MediatR;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using Serilog;
 using System.Text.Json;
@@ -25,7 +29,22 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Services(services)
     .Enrich.FromLogContext());
 
-builder.Services.AddOpenApi();
+// Declares the Bearer scheme in the OpenAPI document so Scalar shows an
+// "Authorize" box and sends the token on the protected endpoints.
+builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>
+{
+    document.Components ??= new OpenApiComponents();
+    document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+    document.Components.SecuritySchemes["Bearer"] = new OpenApiSecurityScheme
+    {
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Token from POST /auth/token (client_credentials).",
+    };
+    document.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("Bearer", document)] = [] }];
+    return Task.CompletedTask;
+}));
 builder.Services.AddDbContext<AssetSyncDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("AssetSyncDb")));
 builder.Services.AddMediatR(cfg =>
@@ -56,6 +75,33 @@ builder.Services.AddSingleton<RabbitMqEventPublisher>();
 builder.Services.AddSingleton<IEventPublisher>(sp => sp.GetRequiredService<RabbitMqEventPublisher>());
 builder.Services.AddHostedService<OutboxProcessor>();
 builder.Services.AddHostedService<WorkOrderSyncedConsumer>();
+
+// JWT bearer auth, OAuth2 client credentials style: the API issues its own
+// tokens at POST /auth/token and validates them here with the same key.
+// Missing or short key -> the app refuses to start rather than running
+// with writes unprotected or signed with a guessable default.
+var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
+var signingKey = TokenService.CreateSigningKey(jwt.SigningKey);
+builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+builder.Services.Configure<ClientCredentialsOptions>(builder.Configuration.GetSection(ClientCredentialsOptions.SectionName));
+builder.Services.AddSingleton<TokenService>();
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidIssuer = jwt.Issuer,
+            ValidAudience = jwt.Audience,
+            IssuerSigningKey = signingKey,
+            ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+    });
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(AuthPolicies.WriteAccess, policy => policy
+        .RequireAuthenticatedUser()
+        .RequireClaim("scope", AuthScopes.Write));
 
 // Fixed window per client IP, no queueing: once an IP hits the limit within
 // the window it gets 429s immediately instead of piling up threads on the
@@ -90,6 +136,8 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseRateLimiter();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // Delegates to GlobalExceptionHandler: ValidationException -> 400,
 // NotFoundException -> 404, anything else -> 500. See that class for why.
@@ -118,6 +166,11 @@ app.MapHealthChecks("/health", new HealthCheckOptions
     },
 }).DisableRateLimiting();
 
+app.MapTokenEndpoint();
+
+// Reads stay public so the live demo can be browsed without credentials;
+// every endpoint that changes data requires a token with the write scope.
+
 app.MapGet("/assets", async (AssetSyncDbContext db) =>
     await db.Assets.ToListAsync())
     .WithName("GetAssets");
@@ -127,7 +180,8 @@ app.MapPost("/assets", async (CreateAssetCommand command, ISender sender) =>
     var asset = await sender.Send(command);
     return Results.Created($"/assets/{asset.Id}", asset);
 })
-    .WithName("CreateAsset");
+    .WithName("CreateAsset")
+    .RequireAuthorization(AuthPolicies.WriteAccess);
 
 app.MapGet("/work-orders", async (AssetSyncDbContext db) =>
     await db.WorkOrders.ToListAsync())
@@ -138,7 +192,8 @@ app.MapPost("/work-orders", async (CreateWorkOrderCommand command, ISender sende
     var workOrder = await sender.Send(command);
     return Results.Created($"/work-orders/{workOrder.Id}", workOrder);
 })
-    .WithName("CreateWorkOrder");
+    .WithName("CreateWorkOrder")
+    .RequireAuthorization(AuthPolicies.WriteAccess);
 
 // Marks the work order completed and enqueues its sync intent atomically
 // (one SaveChanges, one transaction). A background processor drains the
@@ -149,7 +204,8 @@ app.MapPost("/work-orders/{id:int}/complete", async (int id, ISender sender) =>
     await sender.Send(new CompleteWorkOrderCommand(id));
     return Results.Accepted();
 })
-    .WithName("CompleteWorkOrder");
+    .WithName("CompleteWorkOrder")
+    .RequireAuthorization(AuthPolicies.WriteAccess);
 
 app.MapGet("/work-orders/{id:int}/integration-logs", async (int id, AssetSyncDbContext db) =>
     await db.IntegrationLogs.Where(l => l.WorkOrderId == id).OrderByDescending(l => l.AttemptedAt).ToListAsync())

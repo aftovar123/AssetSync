@@ -1,6 +1,28 @@
 @AssetSync.Api_HostAddress = http://localhost:5188
+# Same values you set with `dotnet user-secrets` (Auth:ClientId / Auth:ClientSecret).
+@clientId = erp-integration
+@clientSecret = <your client secret>
 
-GET {{AssetSync.Api_HostAddress}}/weatherforecast/
+# @name token
+POST {{AssetSync.Api_HostAddress}}/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials&client_id={{clientId}}&client_secret={{clientSecret}}
+
+###
+
+GET {{AssetSync.Api_HostAddress}}/assets
 Accept: application/json
+
+###
+
+POST {{AssetSync.Api_HostAddress}}/assets
+Authorization: Bearer {{token.response.body.$.access_token}}
+Content-Type: application/json
+
+{
+  "code": "PUMP-001",
+  "name": "Bomba centrífuga"
+}
 
 ###
