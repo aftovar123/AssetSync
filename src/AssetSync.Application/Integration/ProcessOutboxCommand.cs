@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using AssetSync.Application.Common;
 using AssetSync.Domain;
 using MediatR;
 
@@ -28,6 +30,9 @@ public class ProcessOutboxCommandHandler(
             return 0;
         }
 
+        using var activity = AssetSyncTelemetry.ActivitySource.StartActivity("outbox.process_batch");
+        activity?.SetTag("assetsync.outbox.batch_size", pending.Count);
+
         // One query for the whole batch. Without it, each SyncWorkOrderCommand
         // below would fetch its own work order — N+1 queries per tick.
         var workOrderIds = pending.Select(m => m.WorkOrderId).Distinct().ToArray();
@@ -45,6 +50,15 @@ public class ProcessOutboxCommandHandler(
             {
                 message.RecordFailedAttempt(result.ErrorMessage ?? "Unknown error");
             }
+
+            // "retry" = failed but will be picked up again; "failed" = gave up.
+            var outcome = message.Status switch
+            {
+                OutboxMessageStatus.Processed => "processed",
+                OutboxMessageStatus.Failed => "failed",
+                _ => "retry",
+            };
+            AssetSyncTelemetry.OutboxMessages.Add(1, new KeyValuePair<string, object?>("outcome", outcome));
         }
 
         await outboxRepository.SaveChangesAsync(cancellationToken);

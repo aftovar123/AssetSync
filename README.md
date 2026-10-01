@@ -367,6 +367,53 @@ scope: crear un activo con el token del ERP → `403` y con el de
 de `asset-admin` → `403` y con `integration.read` → `200`; pedir un scope
 no permitido → `400 invalid_scope`.
 
+### Observabilidad (OpenTelemetry → Application Insights)
+
+Trazas y métricas con OpenTelemetry: peticiones HTTP entrantes, llamadas
+HTTP salientes, comandos SQL, métricas del runtime de .NET, y telemetría
+propia del dominio:
+
+- **`outbox.process_batch`**: una traza por cada lote del outbox, con la
+  consulta única que precarga sus órdenes y, debajo, una
+  **`erp.sync_work_order`** por orden (con su código de envío y, si falla,
+  la excepción).
+- **`assetsync.outbox.messages`**: mensajes manejados por resultado
+  (`processed`, `retry`, `failed`).
+- **`assetsync.erp.sync.duration`**: duración de cada sincronización con el
+  ERP, reintentos de Polly incluidos.
+
+La instrumentación es siempre la misma; el destino depende solo de la
+configuración:
+
+| Variable | Destino |
+|---|---|
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | Azure Monitor / Application Insights (producción) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Cualquier backend OTLP, p. ej. el Aspire Dashboard en local |
+| Ninguna | No se exporta nada (tests, ejecuciones locales simples) |
+
+Las capas `Application` y `Domain` no dependen de OpenTelemetry: la
+telemetría propia usa `ActivitySource` y `Meter` de .NET, y es la API la
+que decide si alguien escucha.
+
+**Control de costos.** El procesador del outbox consulta cada 10 segundos
+aunque no haya nada pendiente; registrado tal cual, serían unas 8.600
+trazas SQL al día sin información útil. Un *sampler* descarta las llamadas
+salientes sin padre (SQL o HTTP fuera de una petición o de un lote), y se
+excluyen `/health` y la documentación de la API. Los logs siguen en Serilog
+y no se exportan. En Azure, el área de trabajo tiene un límite diario de
+ingesta para no salir del nivel gratuito.
+
+Para verlo en local, con el
+[Aspire Dashboard](https://learn.microsoft.com/dotnet/aspire/fundamentals/dashboard/standalone)
+en Docker:
+
+```bash
+docker run -d --name aspire-dashboard -p 127.0.0.1:18888:18888 -p 127.0.0.1:4317:18889 \
+  -e DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS=true mcr.microsoft.com/dotnet/aspire-dashboard:latest
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 dotnet run --project src/AssetSync.Api
+# panel en http://localhost:18888
+```
+
 ### Logging estructurado (Serilog)
 
 Reemplaza el logger por defecto de ASP.NET Core — configurado por completo

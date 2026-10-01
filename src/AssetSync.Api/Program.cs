@@ -31,6 +31,8 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
 
 // Declares the Bearer scheme in the OpenAPI document so Scalar shows an
 // "Authorize" box and sends the token on the protected endpoints.
+builder.AddAssetSyncTelemetry();
+
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>
 {
     document.Components ??= new OpenApiComponents();

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using AssetSync.Application.Common;
 using AssetSync.Application.Common.Exceptions;
 using AssetSync.Domain;
 using MediatR;
@@ -32,9 +34,15 @@ public class SyncWorkOrderCommandHandler(
 
         var submissionCode = Guid.NewGuid().ToString("N");
 
+        using var activity = AssetSyncTelemetry.ActivitySource.StartActivity("erp.sync_work_order");
+        activity?.SetTag("assetsync.work_order.id", workOrder.Id);
+        activity?.SetTag("assetsync.submission_code", submissionCode);
+        var started = Stopwatch.GetTimestamp();
+
         try
         {
             await erpClient.SubmitWorkOrderAsync(workOrder, submissionCode, cancellationToken);
+            RecordSyncDuration(started, "success");
 
             workOrder.IsSynced = true;
             await repository.AddIntegrationLogAsync(new IntegrationLog
@@ -54,6 +62,10 @@ public class SyncWorkOrderCommandHandler(
         }
         catch (Exception ex)
         {
+            RecordSyncDuration(started, "failure");
+            activity?.SetStatus(ActivityStatusCode.Error, ex.Message);
+            activity?.AddException(ex);
+
             await repository.AddIntegrationLogAsync(new IntegrationLog
             {
                 WorkOrderId = workOrder.Id,
@@ -68,4 +80,9 @@ public class SyncWorkOrderCommandHandler(
             return new SyncWorkOrderResult(false, submissionCode, ex.Message);
         }
     }
+
+    private static void RecordSyncDuration(long started, string outcome) =>
+        AssetSyncTelemetry.ErpSyncDuration.Record(
+            Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+            new KeyValuePair<string, object?>("outcome", outcome));
 }
