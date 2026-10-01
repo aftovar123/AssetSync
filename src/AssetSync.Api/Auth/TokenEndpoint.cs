@@ -36,13 +36,19 @@ public static class TokenEndpoint
         var (clientId, clientSecret) = ReadBasicCredentials(context.Request)
             ?? (form["client_id"].ToString(), form["client_secret"].ToString());
 
-        if (!tokens.AreValidCredentials(clientId, clientSecret))
+        var client = tokens.FindClient(clientId, clientSecret);
+        if (client is null)
         {
             context.Response.Headers.WWWAuthenticate = "Basic";
             return Error("invalid_client", StatusCodes.Status401Unauthorized);
         }
 
-        var token = tokens.Issue(clientId);
+        if (!TokenService.TryResolveScopes(client, form["scope"], out var scopes))
+        {
+            return Error("invalid_scope", StatusCodes.Status400BadRequest);
+        }
+
+        var token = tokens.Issue(client, scopes);
         // RFC 6749 §5.1: token responses must not be cached.
         context.Response.Headers.CacheControl = "no-store";
         return Results.Ok(new
@@ -50,7 +56,7 @@ public static class TokenEndpoint
             access_token = token.Value,
             token_type = "Bearer",
             expires_in = token.ExpiresInSeconds,
-            scope = AuthScopes.Write,
+            scope = string.Join(' ', token.Scopes),
         });
     }
 

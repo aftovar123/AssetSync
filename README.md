@@ -158,6 +158,20 @@ dotnet run --project src/AssetSync.Api
 
 La cadena de conexión por defecto (`appsettings.json`) apunta a `(localdb)\MSSQLLocalDB`.
 
+LocalDB es exclusivo de Windows. En macOS o Linux, SQL Server corre en un
+contenedor (en Apple Silicon, con la emulación de Rosetta activada en
+Docker), expuesto solo en `127.0.0.1`, y la cadena se sobrescribe con
+user-secrets:
+
+```bash
+docker run -d --name assetsync-sql -e ACCEPT_EULA=Y -e MSSQL_PID=Developer \
+  -e MSSQL_SA_PASSWORD="<contraseña fuerte>" -p 127.0.0.1:1433:1433 \
+  -v assetsync-sql-data:/var/opt/mssql mcr.microsoft.com/mssql/server:2022-latest
+dotnet user-secrets set "ConnectionStrings:AssetSyncDb" \
+  "Server=127.0.0.1,1433;Database=AssetSyncDb;User Id=sa;Password=<contraseña>;TrustServerCertificate=True" \
+  --project src/AssetSync.Api
+```
+
 RabbitMQ es opcional en desarrollo: sin configurar, la API corre igual —
 `messaging` simplemente aparece `Degraded` en `/health` (ver sección de
 arquitectura orientada a eventos). Para probarlo localmente, con
@@ -172,8 +186,12 @@ la API se niega a arrancar (ver sección de autenticación). Para desarrollo:
 
 ```bash
 dotnet user-secrets set "Jwt:SigningKey" "$(openssl rand -base64 48)" --project src/AssetSync.Api
-dotnet user-secrets set "Auth:ClientId" "erp-integration" --project src/AssetSync.Api
-dotnet user-secrets set "Auth:ClientSecret" "<un secreto largo>" --project src/AssetSync.Api
+dotnet user-secrets set "Auth:Clients:0:ClientId" "erp-integration" --project src/AssetSync.Api
+dotnet user-secrets set "Auth:Clients:0:ClientSecret" "<un secreto largo>" --project src/AssetSync.Api
+dotnet user-secrets set "Auth:Clients:0:Scopes" "workorders.write integration.read" --project src/AssetSync.Api
+dotnet user-secrets set "Auth:Clients:1:ClientId" "asset-admin" --project src/AssetSync.Api
+dotnet user-secrets set "Auth:Clients:1:ClientSecret" "<otro secreto largo>" --project src/AssetSync.Api
+dotnet user-secrets set "Auth:Clients:1:Scopes" "assets.write" --project src/AssetSync.Api
 ```
 
 ### Docker
@@ -184,7 +202,8 @@ docker run -p 8080:8080 \
   -e ConnectionStrings__AssetSyncDb="<tu cadena de SQL Server>" \
   -e RabbitMq__ConnectionString="<tu AMQP URL>" \
   -e Jwt__SigningKey="<clave de 32+ bytes>" \
-  -e Auth__ClientId="erp-integration" -e Auth__ClientSecret="<secreto>" \
+  -e Auth__Clients__0__ClientId="erp-integration" -e Auth__Clients__0__ClientSecret="<secreto>" \
+  -e Auth__Clients__0__Scopes="workorders.write integration.read" \
   assetsync-api
 ```
 
@@ -277,51 +296,76 @@ devuelve `429`, y `/health` sigue respondiendo `200` durante todo el proceso.
   estable y sin *change tracking*. Los valores fuera de rango se ajustan en
   vez de rechazarse, así que ningún cliente puede pedir la tabla completa.
 
-### Autenticación (JWT, OAuth2 client credentials)
+### Autenticación y autorización (JWT, OAuth2 client credentials)
 
-Todo endpoint que **modifica datos** exige un token; las lecturas y
-`/health` siguen públicas para que el demo en vivo se pueda explorar sin
-credenciales. El flujo es el estándar OAuth2 para comunicación
-máquina a máquina (*client credentials*, RFC 6749 §4.4) — el mismo que
-usaría el ERP para llamar a esta API:
+El flujo es el estándar OAuth2 para comunicación máquina a máquina
+(*client credentials*, RFC 6749 §4.4) — el mismo que usaría el ERP para
+llamar a esta API:
 
 1. El cliente pide un token a `POST /auth/token` con
    `grant_type=client_credentials`, `client_id` y `client_secret` (en el
-   formulario o como HTTP Basic).
+   formulario o como HTTP Basic), y opcionalmente `scope` para pedir solo
+   una parte de sus permisos.
 2. La API responde un **JWT firmado con HMAC-SHA256** que expira en 60
-   minutos, con el claim `scope=assetsync.write`.
+   minutos, con el claim `scope` (lista separada por espacios, RFC 9068).
 3. El cliente lo envía como `Authorization: Bearer <token>`. El middleware
-   `JwtBearer` valida firma, emisor, audiencia, algoritmo y expiración;
-   la política `WriteAccess` además exige el scope.
+   `JwtBearer` valida firma, emisor, audiencia, algoritmo y expiración, y
+   la política del endpoint exige el scope de su área.
+
+**Un scope por área**, así cada cliente recibe solo lo que su función
+necesita — la integración del ERP puede completar órdenes pero no crear
+activos:
+
+| Scope | Permite |
+|---|---|
+| `assets.write` | Crear activos |
+| `workorders.write` | Crear y completar órdenes de trabajo |
+| `integration.read` | Ver el outbox y los logs de integración (estado interno de la sincronización) |
+
+Los clientes se configuran con sus scopes permitidos (`Auth:Clients`). Sin
+token, un endpoint protegido responde `401`; con un token válido pero sin
+el scope que exige, `403`. Las lecturas de activos y órdenes, y `/health`,
+siguen públicas para que el demo en vivo se pueda explorar.
 
 ```bash
 curl -X POST https://localhost:<puerto>/auth/token \
   -d grant_type=client_credentials -d client_id=erp-integration -d client_secret=<secreto>
-# {"access_token":"eyJhbGciOiJIUzI1NiIs...","token_type":"Bearer","expires_in":3600,"scope":"assetsync.write"}
+# {"access_token":"eyJhbGciOiJIUzI1NiIs...","token_type":"Bearer","expires_in":3600,
+#  "scope":"workorders.write integration.read"}
+
+curl -X POST https://localhost:<puerto>/auth/token \
+  -d grant_type=client_credentials -d client_id=erp-integration -d client_secret=<secreto> \
+  -d scope=assets.write
+# {"error":"invalid_scope"}   ← no puede pedir un permiso que no tiene
 ```
 
 Decisiones de seguridad:
 
 - **Sin clave, no arranca.** Si `Jwt:SigningKey` falta o tiene menos de 32
   bytes, la aplicación falla al iniciar en vez de correr con las escrituras
-  desprotegidas o firmadas con una clave por defecto adivinable.
+  desprotegidas o firmadas con una clave por defecto adivinable. Lo mismo
+  con un scope mal escrito en la configuración de un cliente: el error dice
+  qué cliente y qué scope, en vez de dejar al cliente sin acceso sin pista.
 - **Secretos fuera de git**: user-secrets en local, configuración del App
-  Service en Azure (`Jwt__SigningKey`, `Auth__ClientId`,
-  `Auth__ClientSecret`).
+  Service en Azure (`Jwt__SigningKey`, `Auth__Clients__0__ClientSecret`, ...).
 - **Comparación en tiempo constante** de las credenciales
-  (`CryptographicOperations.FixedTimeEquals` sobre hashes), para no filtrar
-  por tiempo de respuesta cuántos caracteres coinciden.
-- **Errores en formato OAuth2** (`invalid_client`, `unsupported_grant_type`)
-  y `Cache-Control: no-store` en la respuesta del token, como pide el RFC.
+  (`CryptographicOperations.FixedTimeEquals` sobre hashes, contra todos los
+  clientes), para no filtrar por tiempo de respuesta qué cliente existe ni
+  cuántos caracteres coinciden.
+- **Errores en formato OAuth2** (`invalid_client`, `invalid_scope`,
+  `unsupported_grant_type`) y `Cache-Control: no-store` en la respuesta del
+  token, como pide el RFC.
 - El intento de fuerza bruta contra `/auth/token` queda acotado por el
   mismo rate limiting de 60 peticiones por minuto por IP.
 - Scalar declara el esquema Bearer, así que se puede pegar el token en su
-  botón de autorización y probar los `POST` desde la interfaz.
+  botón de autorización y probar los endpoints protegidos desde la interfaz.
 
-Verificado localmente: `POST /assets` sin token → `401`; secreto incorrecto
-→ `401 invalid_client`; con token válido la petición pasa la autenticación
-y llega a la validación de FluentValidation; un token alterado → `401`;
-`/health` responde sin token.
+Verificado localmente contra SQL Server, con cada combinación de cliente y
+scope: crear un activo con el token del ERP → `403` y con el de
+`asset-admin` → `201`; crear una orden con un token de solo
+`integration.read` → `403`; ver el outbox sin token → `401`, con el token
+de `asset-admin` → `403` y con `integration.read` → `200`; pedir un scope
+no permitido → `400 invalid_scope`.
 
 ### Logging estructurado (Serilog)
 
@@ -341,19 +385,19 @@ una línea estructurada por request (método, ruta, código, duración):
 
 ### Endpoints principales
 
-| Método | Ruta | Qué hace | Token |
+| Método | Ruta | Qué hace | Scope requerido |
 |---|---|---|---|
 | `GET` | `/health` | Estado de la API, la base de datos y el outbox | No |
 | `POST` | `/auth/token` | Emite un JWT (OAuth2 client credentials) | No |
 | `GET` | `/assets` | Lista los activos (paginado) | No |
-| `POST` | `/assets` | Crea un activo | Sí |
+| `POST` | `/assets` | Crea un activo | `assets.write` |
 | `GET` | `/work-orders` | Lista las órdenes de trabajo (paginado) | No |
-| `POST` | `/work-orders` | Crea una orden de trabajo | Sí |
-| `POST` | `/work-orders/{id}/complete` | Marca completada y encola la sincronización (202 inmediato) | Sí |
-| `GET` | `/work-orders/{id}/integration-logs` | Historial de intentos de sincronización (paginado) | No |
-| `GET` | `/outbox` | Estado de la cola de sincronización pendiente (paginado) | No |
+| `POST` | `/work-orders` | Crea una orden de trabajo | `workorders.write` |
+| `POST` | `/work-orders/{id}/complete` | Marca completada y encola la sincronización (202 inmediato) | `workorders.write` |
+| `GET` | `/work-orders/{id}/integration-logs` | Historial de intentos de sincronización (paginado) | `integration.read` |
+| `GET` | `/outbox` | Estado de la cola de sincronización pendiente (paginado) | `integration.read` |
 
-"Sí" = requiere `Authorization: Bearer <token>` con scope `assetsync.write`.
+Los endpoints con scope requieren `Authorization: Bearer <token>`; "No" = público.
 
 ## Tests
 
@@ -361,7 +405,7 @@ una línea estructurada por request (método, ruta, código, duración):
 dotnet test
 ```
 
-62 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
+77 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
 sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
 - **Outbox y sincronización**: `SyncWorkOrderCommandHandler`,
@@ -384,10 +428,14 @@ sin esperar tiempo real salvo donde se prueba backoff de verdad:
   desde memoria (se borran las filas desde otro contexto y aun así las
   devuelve), y la paginación: página por defecto, última página, página
   fuera de rango, límites de `pageSize` y ausencia de *change tracking*.
-- **Autenticación**: `TokenService` (credenciales correctas/incorrectas/
-  ausentes, token con los claims esperados, rechazo tras expirar o con otra
-  clave, clave corta rechazada) y el endpoint `/auth/token` (body y HTTP
-  Basic, `invalid_client`, `unsupported_grant_type`, `no-store`).
+- **Autenticación y autorización**: `TokenService` (cada cliente con su
+  secreto, el secreto de un cliente no sirve para otro, scopes concedidos
+  por defecto y por subconjunto, scope no permitido rechazado, token con los
+  claims esperados, rechazo tras expirar o con otra clave, clave corta y
+  scope mal configurado rechazados al arrancar), la verificación de scopes
+  sobre el claim separado por espacios (sin coincidencias parciales) y el
+  endpoint `/auth/token` (body y HTTP Basic, `invalid_client`,
+  `invalid_scope`, `unsupported_grant_type`, `no-store`).
 
 ## Decisiones fuera de alcance (a propósito)
 

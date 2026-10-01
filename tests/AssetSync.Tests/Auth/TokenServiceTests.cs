@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using AssetSync.Api.Auth;
 using AssetSync.Domain;
 using Microsoft.Extensions.Options;
@@ -10,10 +11,26 @@ namespace AssetSync.Tests.Auth;
 public class TokenServiceTests
 {
     internal const string SigningKey = "test-signing-key-that-is-at-least-32-bytes!";
-    internal const string ClientId = "erp-integration";
-    internal const string ClientSecret = "s3cret-value";
+    internal const string ErpClientId = "erp-integration";
+    internal const string ErpSecret = "erp-s3cret";
+    internal const string AdminClientId = "asset-admin";
+    internal const string AdminSecret = "admin-s3cret";
 
     private static readonly DateTime Now = new(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
+
+    internal static AuthClient Erp => new()
+    {
+        ClientId = ErpClientId,
+        ClientSecret = ErpSecret,
+        Scopes = $"{AuthScopes.WorkOrdersWrite} {AuthScopes.IntegrationRead}",
+    };
+
+    internal static AuthClient Admin => new()
+    {
+        ClientId = AdminClientId,
+        ClientSecret = AdminSecret,
+        Scopes = AuthScopes.AssetsWrite,
+    };
 
     internal static TokenService CreateService(DateTime? now = null)
     {
@@ -21,7 +38,7 @@ public class TokenServiceTests
         clock.Setup(c => c.UtcNow).Returns(now ?? Now);
         return new TokenService(
             Options.Create(new JwtOptions { SigningKey = SigningKey, TokenLifetimeMinutes = 60 }),
-            Options.Create(new ClientCredentialsOptions { ClientId = ClientId, ClientSecret = ClientSecret }),
+            Options.Create(new AuthOptions { Clients = [Erp, Admin] }),
             clock.Object);
     }
 
@@ -33,51 +50,77 @@ public class TokenServiceTests
         LifetimeValidator = (notBefore, expires, _, _) => notBefore <= now && now < expires,
     };
 
-    [Fact]
-    public void AreValidCredentials_CorrectIdAndSecret_ReturnsTrue()
+    [Theory]
+    [InlineData(ErpClientId, ErpSecret, ErpClientId)]
+    [InlineData(AdminClientId, AdminSecret, AdminClientId)]
+    public void FindClient_CorrectCredentials_ReturnsThatClient(string id, string secret, string expected)
     {
-        Assert.True(CreateService().AreValidCredentials(ClientId, ClientSecret));
+        Assert.Equal(expected, CreateService().FindClient(id, secret)?.ClientId);
     }
 
     [Theory]
-    [InlineData(ClientId, "wrong")]
-    [InlineData("other-client", ClientSecret)]
-    [InlineData(ClientId, "")]
+    [InlineData(ErpClientId, "wrong")]
+    [InlineData(ErpClientId, AdminSecret)] // another client's secret
+    [InlineData("other-client", ErpSecret)]
+    [InlineData(ErpClientId, "")]
     [InlineData(null, null)]
-    public void AreValidCredentials_WrongOrMissing_ReturnsFalse(string? clientId, string? clientSecret)
+    public void FindClient_WrongOrMissing_ReturnsNull(string? clientId, string? clientSecret)
     {
-        Assert.False(CreateService().AreValidCredentials(clientId, clientSecret));
+        Assert.Null(CreateService().FindClient(clientId, clientSecret));
     }
 
     [Fact]
-    public void AreValidCredentials_NoClientConfigured_RejectsEverything()
+    public void FindClient_NoClientsConfigured_RejectsEverything()
     {
         var service = new TokenService(
             Options.Create(new JwtOptions { SigningKey = SigningKey }),
-            Options.Create(new ClientCredentialsOptions()),
+            Options.Create(new AuthOptions()),
             Mock.Of<IClock>());
 
-        Assert.False(service.AreValidCredentials("", ""));
-        Assert.False(service.AreValidCredentials(ClientId, ClientSecret));
+        Assert.Null(service.FindClient("", ""));
+        Assert.Null(service.FindClient(ErpClientId, ErpSecret));
     }
 
     [Fact]
-    public async Task Issue_ProducesSignedTokenWithClientAndWriteScope()
+    public void TryResolveScopes_NoneRequested_GrantsAllAllowedScopes()
     {
-        var token = CreateService().Issue(ClientId);
+        Assert.True(TokenService.TryResolveScopes(Erp, null, out var granted));
+        Assert.Equal([AuthScopes.WorkOrdersWrite, AuthScopes.IntegrationRead], granted);
+    }
+
+    [Fact]
+    public void TryResolveScopes_SubsetRequested_GrantsOnlyThatSubset()
+    {
+        Assert.True(TokenService.TryResolveScopes(Erp, AuthScopes.IntegrationRead, out var granted));
+        Assert.Equal([AuthScopes.IntegrationRead], granted);
+    }
+
+    [Theory]
+    [InlineData(AuthScopes.AssetsWrite)]
+    [InlineData("integration.read assets.write")]
+    [InlineData("made.up")]
+    public void TryResolveScopes_ScopeNotAllowedForClient_IsRefused(string requested)
+    {
+        Assert.False(TokenService.TryResolveScopes(Erp, requested, out _));
+    }
+
+    [Fact]
+    public async Task Issue_ProducesSignedTokenWithClientAndSpaceSeparatedScopes()
+    {
+        var token = CreateService().Issue(Erp, Erp.ScopeList);
 
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(token.Value, ValidationParameters(Now.AddMinutes(1)));
 
         Assert.True(result.IsValid, result.Exception?.Message);
         Assert.Equal(3600, token.ExpiresInSeconds);
-        Assert.Equal(ClientId, result.Claims["client_id"]);
-        Assert.Equal(AuthScopes.Write, result.Claims["scope"]);
+        Assert.Equal(ErpClientId, result.Claims["client_id"]);
+        Assert.Equal("workorders.write integration.read", result.Claims["scope"]);
     }
 
     [Fact]
     public async Task Issue_TokenIsRejectedAfterItExpires()
     {
-        var token = CreateService().Issue(ClientId);
+        var token = CreateService().Issue(Erp, Erp.ScopeList);
 
         var result = await new JsonWebTokenHandler().ValidateTokenAsync(token.Value, ValidationParameters(Now.AddMinutes(61)));
 
@@ -87,7 +130,7 @@ public class TokenServiceTests
     [Fact]
     public async Task Issue_TokenSignedWithAnotherKeyIsRejected()
     {
-        var token = CreateService().Issue(ClientId);
+        var token = CreateService().Issue(Erp, Erp.ScopeList);
         var parameters = ValidationParameters(Now.AddMinutes(1));
         parameters.IssuerSigningKey = TokenService.CreateSigningKey("a-completely-different-key-of-32-bytes!!");
 
@@ -102,5 +145,32 @@ public class TokenServiceTests
     public void CreateSigningKey_MissingOrShortKey_Throws(string key)
     {
         Assert.Throws<InvalidOperationException>(() => TokenService.CreateSigningKey(key));
+    }
+
+    [Fact]
+    public void ValidateClients_UnknownScope_ThrowsNamingClientAndScope()
+    {
+        var options = new AuthOptions { Clients = [new AuthClient { ClientId = "erp", Scopes = "workorder.write" }] };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => TokenService.ValidateClients(options));
+        Assert.Contains("erp: workorder.write", ex.Message);
+    }
+
+    [Fact]
+    public void ValidateClients_KnownScopes_DoesNotThrow()
+    {
+        TokenService.ValidateClients(new AuthOptions { Clients = [Erp, Admin] });
+    }
+
+    [Theory]
+    [InlineData("workorders.write integration.read", AuthScopes.IntegrationRead, true)]
+    [InlineData("workorders.write integration.read", AuthScopes.AssetsWrite, false)]
+    [InlineData("assets.write", AuthScopes.AssetsWrite, true)]
+    [InlineData("assets.writer", AuthScopes.AssetsWrite, false)] // no partial matches
+    public void HasScope_ChecksEachSpaceSeparatedScope(string claim, string required, bool expected)
+    {
+        var user = new ClaimsPrincipal(new ClaimsIdentity([new Claim("scope", claim)], "Bearer"));
+
+        Assert.Equal(expected, AuthScopes.HasScope(user, required));
     }
 }

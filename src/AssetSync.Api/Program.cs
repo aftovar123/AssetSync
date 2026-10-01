@@ -91,8 +91,9 @@ builder.Services.AddHostedService<WorkOrderSyncedConsumer>();
 // with writes unprotected or signed with a guessable default.
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
 var signingKey = TokenService.CreateSigningKey(jwt.SigningKey);
+TokenService.ValidateClients(builder.Configuration.GetSection(AuthOptions.SectionName).Get<AuthOptions>() ?? new AuthOptions());
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
-builder.Services.Configure<ClientCredentialsOptions>(builder.Configuration.GetSection(ClientCredentialsOptions.SectionName));
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection(AuthOptions.SectionName));
 builder.Services.AddSingleton<TokenService>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
@@ -107,10 +108,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew = TimeSpan.FromSeconds(30),
         };
     });
-builder.Services.AddAuthorizationBuilder()
-    .AddPolicy(AuthPolicies.WriteAccess, policy => policy
+// One policy per scope, named after it: an endpoint states the scope it
+// needs and a valid token without that scope gets 403 instead of 401.
+var authorization = builder.Services.AddAuthorizationBuilder();
+foreach (var scope in AuthScopes.All)
+{
+    authorization.AddPolicy(scope, policy => policy
         .RequireAuthenticatedUser()
-        .RequireClaim("scope", AuthScopes.Write));
+        .RequireAssertion(context => AuthScopes.HasScope(context.User, scope)));
+}
 
 // Fixed window per client IP, no queueing: once an IP hits the limit within
 // the window it gets 429s immediately instead of piling up threads on the
@@ -177,8 +183,9 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 
 app.MapTokenEndpoint();
 
-// Reads stay public so the live demo can be browsed without credentials;
-// every endpoint that changes data requires a token with the write scope.
+// Asset and work order reads stay public so the live demo can be browsed
+// without credentials. Writes need the scope of their area, and the outbox
+// and integration logs — internal sync state — need integration.read.
 
 // List endpoints are paginated (?page=1&pageSize=20, capped at 100) and
 // read-only, so they skip change tracking. See Pagination.
@@ -192,7 +199,7 @@ app.MapPost("/assets", async (CreateAssetCommand command, ISender sender) =>
     return Results.Created($"/assets/{asset.Id}", asset);
 })
     .WithName("CreateAsset")
-    .RequireAuthorization(AuthPolicies.WriteAccess);
+    .RequireAuthorization(AuthScopes.AssetsWrite);
 
 app.MapGet("/work-orders", async (int? page, int? pageSize, AssetSyncDbContext db, CancellationToken ct) =>
     await db.WorkOrders.OrderByDescending(w => w.CreatedAt).ThenByDescending(w => w.Id).ToPagedResultAsync(page, pageSize, ct))
@@ -204,7 +211,7 @@ app.MapPost("/work-orders", async (CreateWorkOrderCommand command, ISender sende
     return Results.Created($"/work-orders/{workOrder.Id}", workOrder);
 })
     .WithName("CreateWorkOrder")
-    .RequireAuthorization(AuthPolicies.WriteAccess);
+    .RequireAuthorization(AuthScopes.WorkOrdersWrite);
 
 // Marks the work order completed and enqueues its sync intent atomically
 // (one SaveChanges, one transaction). A background processor drains the
@@ -216,17 +223,19 @@ app.MapPost("/work-orders/{id:int}/complete", async (int id, ISender sender) =>
     return Results.Accepted();
 })
     .WithName("CompleteWorkOrder")
-    .RequireAuthorization(AuthPolicies.WriteAccess);
+    .RequireAuthorization(AuthScopes.WorkOrdersWrite);
 
 app.MapGet("/work-orders/{id:int}/integration-logs", async (int id, int? page, int? pageSize, AssetSyncDbContext db, CancellationToken ct) =>
     await db.IntegrationLogs.Where(l => l.WorkOrderId == id)
         .OrderByDescending(l => l.AttemptedAt).ThenByDescending(l => l.Id)
         .ToPagedResultAsync(page, pageSize, ct))
-    .WithName("GetWorkOrderIntegrationLogs");
+    .WithName("GetWorkOrderIntegrationLogs")
+    .RequireAuthorization(AuthScopes.IntegrationRead);
 
 app.MapGet("/outbox", async (int? page, int? pageSize, AssetSyncDbContext db, CancellationToken ct) =>
     await db.OutboxMessages.OrderByDescending(m => m.CreatedAt).ThenByDescending(m => m.Id)
         .ToPagedResultAsync(page, pageSize, ct))
-    .WithName("GetOutboxMessages");
+    .WithName("GetOutboxMessages")
+    .RequireAuthorization(AuthScopes.IntegrationRead);
 
 app.Run();

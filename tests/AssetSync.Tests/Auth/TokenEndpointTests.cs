@@ -39,8 +39,8 @@ public class TokenEndpointTests
         var context = CreateContext(new()
         {
             ["grant_type"] = "client_credentials",
-            ["client_id"] = TokenServiceTests.ClientId,
-            ["client_secret"] = TokenServiceTests.ClientSecret,
+            ["client_id"] = TokenServiceTests.ErpClientId,
+            ["client_secret"] = TokenServiceTests.ErpSecret,
         }, out var body);
 
         var json = await Execute(context, body);
@@ -49,14 +49,49 @@ public class TokenEndpointTests
         Assert.Equal("Bearer", json.GetProperty("token_type").GetString());
         Assert.False(string.IsNullOrEmpty(json.GetProperty("access_token").GetString()));
         Assert.Equal(3600, json.GetProperty("expires_in").GetInt32());
+        Assert.Equal("workorders.write integration.read", json.GetProperty("scope").GetString());
         Assert.Equal("no-store", context.Response.Headers.CacheControl.ToString());
+    }
+
+    [Fact]
+    public async Task HandleAsync_SubsetOfScopesRequested_GrantsOnlyThat()
+    {
+        var context = CreateContext(new()
+        {
+            ["grant_type"] = "client_credentials",
+            ["client_id"] = TokenServiceTests.ErpClientId,
+            ["client_secret"] = TokenServiceTests.ErpSecret,
+            ["scope"] = "integration.read",
+        }, out var body);
+
+        var json = await Execute(context, body);
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.Equal("integration.read", json.GetProperty("scope").GetString());
+    }
+
+    [Fact]
+    public async Task HandleAsync_ScopeTheClientDoesNotHave_Returns400InvalidScope()
+    {
+        var context = CreateContext(new()
+        {
+            ["grant_type"] = "client_credentials",
+            ["client_id"] = TokenServiceTests.ErpClientId,
+            ["client_secret"] = TokenServiceTests.ErpSecret,
+            ["scope"] = "assets.write",
+        }, out var body);
+
+        var json = await Execute(context, body);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Equal("invalid_scope", json.GetProperty("error").GetString());
     }
 
     [Fact]
     public async Task HandleAsync_ValidCredentialsAsBasicAuth_ReturnsBearerToken()
     {
         var context = CreateContext(new() { ["grant_type"] = "client_credentials" }, out var body);
-        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{TokenServiceTests.ClientId}:{TokenServiceTests.ClientSecret}"));
+        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{TokenServiceTests.ErpClientId}:{TokenServiceTests.ErpSecret}"));
         context.Request.Headers.Authorization = $"Basic {basic}";
 
         var json = await Execute(context, body);
@@ -71,7 +106,7 @@ public class TokenEndpointTests
         var context = CreateContext(new()
         {
             ["grant_type"] = "client_credentials",
-            ["client_id"] = TokenServiceTests.ClientId,
+            ["client_id"] = TokenServiceTests.ErpClientId,
             ["client_secret"] = "wrong",
         }, out var body);
 

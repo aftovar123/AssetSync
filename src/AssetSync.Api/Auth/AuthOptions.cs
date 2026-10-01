@@ -1,3 +1,5 @@
+using System.Security.Claims;
+
 namespace AssetSync.Api.Auth;
 
 /// <summary>
@@ -16,24 +18,46 @@ public class JwtOptions
 }
 
 /// <summary>
-/// The machine client allowed to request tokens (OAuth2 client credentials),
-/// e.g. the ERP-side integration. Same rule as the signing key: the secret
-/// only lives in user-secrets / App Service configuration (Auth__ClientSecret).
+/// The machine clients allowed to request tokens (OAuth2 client credentials),
+/// each limited to its own scopes. Secrets only live in user-secrets / App
+/// Service configuration (Auth__Clients__0__ClientSecret, ...).
 /// </summary>
-public class ClientCredentialsOptions
+public class AuthOptions
 {
     public const string SectionName = "Auth";
 
+    public List<AuthClient> Clients { get; set; } = [];
+}
+
+public class AuthClient
+{
     public string ClientId { get; set; } = string.Empty;
     public string ClientSecret { get; set; } = string.Empty;
+
+    /// <summary>Space-separated, as in the OAuth2 "scope" parameter.</summary>
+    public string Scopes { get; set; } = string.Empty;
+
+    public IReadOnlyList<string> ScopeList => AuthScopes.Parse(Scopes);
 }
 
+/// <summary>
+/// One scope per area of the API, so a client only gets what its job needs:
+/// the ERP integration can complete work orders but not create assets.
+/// Each scope is also the name of the authorization policy that requires it.
+/// </summary>
 public static class AuthScopes
 {
-    public const string Write = "assetsync.write";
-}
+    public const string AssetsWrite = "assets.write";
+    public const string WorkOrdersWrite = "workorders.write";
+    public const string IntegrationRead = "integration.read";
 
-public static class AuthPolicies
-{
-    public const string WriteAccess = "WriteAccess";
+    public static readonly IReadOnlyList<string> All = [AssetsWrite, WorkOrdersWrite, IntegrationRead];
+
+    public static IReadOnlyList<string> Parse(string? scopes) =>
+        (scopes ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    // The token carries a single space-separated "scope" claim (RFC 9068),
+    // so the check splits it instead of looking for one claim per scope.
+    public static bool HasScope(ClaimsPrincipal user, string scope) =>
+        user.FindAll("scope").SelectMany(c => Parse(c.Value)).Contains(scope);
 }
