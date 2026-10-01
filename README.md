@@ -402,8 +402,43 @@ Los endpoints con scope requieren `Authorization: Bearer <token>`; "No" = públi
 ## Tests
 
 ```bash
-dotnet test
+dotnet test                                   # todo (las de integración necesitan Docker)
+dotnet test tests/AssetSync.Tests             # solo unitarias, en un segundo y sin Docker
+dotnet test tests/AssetSync.IntegrationTests  # solo integración
 ```
+
+Dos niveles: **104 tests** en total, que también corren en GitHub Actions
+en cada push.
+
+### Integración: la API real contra SQL Server real
+
+27 tests que levantan la aplicación completa con `WebApplicationFactory`
+—el mismo `Program`, middleware, políticas de autorización y mapeos de EF
+Core que producción— contra un SQL Server desechable que
+[Testcontainers](https://testcontainers.com/) crea en Docker al empezar y
+destruye al terminar. Así se prueba lo que una base en memoria no puede
+ejecutar, como el `UPDATE TOP ... OUTPUT` del outbox. Solo tres cosas
+difieren de producción, a propósito: el cliente ERP siempre responde bien
+(el simulado falla al azar), el ciclo del outbox se dispara a mano en vez
+de cada 10 segundos, y el rate limiting se levanta porque todas las
+peticiones de prueba salen de la misma IP.
+
+- **Permisos**: la matriz completa endpoint × cliente (`401`, `403` o
+  permitido), un token limitado a `integration.read` que no puede escribir,
+  y un token alterado rechazado.
+- **Flujo de punta a punta**: token → activo → tres órdenes → completarlas
+  (`202`, todavía sin sincronizar) → procesar el outbox → órdenes
+  sincronizadas, mensajes `Processed` y log de integración enviado; y
+  completar dos veces la misma orden no la envía dos veces.
+- **Claim atómico del outbox**: dos procesadores reclamando a la vez desde
+  conexiones separadas nunca obtienen el mismo mensaje; y un mensaje
+  atascado en `Processing` se recupera solo después de los 2 minutos,
+  nunca uno que otro procesador está trabajando.
+- **Paginación y validación por HTTP**: páginas estables y sin
+  solapamiento, `pageSize` limitado a 100, `400` con errores por campo, y
+  `/health` reportando la base real.
+
+### Unitarias
 
 77 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
 sin esperar tiempo real salvo donde se prueba backoff de verdad:

@@ -6,6 +6,7 @@
     <Project Path="src/AssetSync.Infrastructure/AssetSync.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AssetSync.IntegrationTests/AssetSync.IntegrationTests.csproj" />
     <Project Path="tests/AssetSync.Tests/AssetSync.Tests.csproj" />
   </Folder>
 </Solution>

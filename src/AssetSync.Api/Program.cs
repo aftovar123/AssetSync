@@ -239,3 +239,7 @@ app.MapGet("/outbox", async (int? page, int? pageSize, AssetSyncDbContext db, Ca
     .RequireAuthorization(AuthScopes.IntegrationRead);
 
 app.Run();
+
+// Lets the integration tests start this exact app through
+// WebApplicationFactory<Program> instead of a hand-built copy of it.
+public partial class Program;
