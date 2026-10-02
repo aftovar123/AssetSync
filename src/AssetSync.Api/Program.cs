@@ -29,10 +29,10 @@ builder.Host.UseSerilog((context, services, configuration) => configuration
     .ReadFrom.Services(services)
     .Enrich.FromLogContext());
 
+builder.AddAssetSyncTelemetry(out var telemetryWarning);
+
 // Declares the Bearer scheme in the OpenAPI document so Scalar shows an
 // "Authorize" box and sends the token on the protected endpoints.
-builder.AddAssetSyncTelemetry();
-
 builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, _, _) =>
 {
     document.Components ??= new OpenApiComponents();
@@ -138,6 +138,11 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+if (telemetryWarning is not null)
+{
+    app.Logger.LogWarning(telemetryWarning);
+}
 
 // One structured log line per request (method, path, status, elapsed) —
 // separate from the per-feature logging already in ResilientErpClient and

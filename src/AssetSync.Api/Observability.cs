@@ -27,8 +27,14 @@ public static class Observability
     // Health probes and API docs would only add noise and ingestion volume.
     private static readonly string[] IgnoredPaths = ["/health", "/openapi", "/scalar"];
 
-    public static WebApplicationBuilder AddAssetSyncTelemetry(this WebApplicationBuilder builder)
+    /// <param name="warning">
+    /// Set when telemetry is misconfigured but the app can run without it;
+    /// Program logs it once the logger exists.
+    /// </param>
+    public static WebApplicationBuilder AddAssetSyncTelemetry(this WebApplicationBuilder builder, out string? warning)
     {
+        warning = null;
+
         var otel = builder.Services.AddOpenTelemetry()
             .ConfigureResource(resource => resource.AddService(ServiceName))
             .WithTracing(tracing => tracing
@@ -47,10 +53,23 @@ public static class Observability
                 .AddRuntimeInstrumentation()
                 .AddMeter(AssetSyncTelemetry.Name));
 
+        // Telemetry is optional, so a bad value must never take the API down.
+        // The exporter throws while the host starts if the connection string
+        // is malformed — e.g. the bare instrumentation key pasted instead of
+        // the full "InstrumentationKey=...;IngestionEndpoint=..." string,
+        // which crash-looped the app on its free plan until a quota stopped it.
         var appInsights = builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"];
         if (!string.IsNullOrWhiteSpace(appInsights))
         {
-            otel.UseAzureMonitorExporter(options => options.ConnectionString = appInsights);
+            if (IsValidAzureMonitorConnectionString(appInsights))
+            {
+                otel.UseAzureMonitorExporter(options => options.ConnectionString = appInsights);
+            }
+            else
+            {
+                warning = "APPLICATIONINSIGHTS_CONNECTION_STRING is not a valid connection string " +
+                    "(expected \"InstrumentationKey=...;IngestionEndpoint=...\"); telemetry will not be sent to Azure Monitor.";
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
@@ -59,6 +78,19 @@ public static class Observability
         }
 
         return builder;
+    }
+
+    /// <summary>
+    /// Same shape check the exporter does: "key=value" segments separated by
+    /// ';', one of them InstrumentationKey with a value.
+    /// </summary>
+    public static bool IsValidAzureMonitorConnectionString(string value)
+    {
+        var segments = value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return segments.Length > 0
+            && segments.All(s => s.IndexOf('=') > 0)
+            && segments.Any(s => s.StartsWith("InstrumentationKey=", StringComparison.OrdinalIgnoreCase)
+                && s.Length > "InstrumentationKey=".Length);
     }
 
     /// <summary>
