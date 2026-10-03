@@ -1,4 +1,5 @@
 using AssetSync.Api;
+using Microsoft.AspNetCore.Http;
 
 namespace AssetSync.Tests.Api;
 
@@ -22,5 +23,27 @@ public class ObservabilityTests
     public void IsValidAzureMonitorConnectionString_Malformed_ReturnsFalse(string value)
     {
         Assert.False(Observability.IsValidAzureMonitorConnectionString(value));
+    }
+
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/health")]
+    [InlineData("/health/ready")]
+    [InlineData("/openapi/v1.json")]
+    [InlineData("/scalar")]
+    [InlineData("/robots933456.txt")]
+    public void IsIgnoredPath_ProbesDocsAndRoot_ReturnsTrue(string path)
+    {
+        Assert.True(Observability.IsIgnoredPath(new PathString(path)));
+    }
+
+    [Theory]
+    [InlineData("/assets")]
+    [InlineData("/work-orders/5/complete")]
+    [InlineData("/healthy")] // only whole segments match
+    [InlineData("/auth/token")]
+    public void IsIgnoredPath_ApiEndpoints_ReturnsFalse(string path)
+    {
+        Assert.False(Observability.IsIgnoredPath(new PathString(path)));
     }
 }

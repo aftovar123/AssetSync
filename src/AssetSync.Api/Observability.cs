@@ -25,7 +25,10 @@ public static class Observability
     public const string ServiceName = "assetsync-api";
 
     // Health probes and API docs would only add noise and ingestion volume.
-    private static readonly string[] IgnoredPaths = ["/health", "/openapi", "/scalar"];
+    // /robots933456.txt is the probe App Service sends on every container
+    // start; it and the root (no endpoint, only probes and bots) always 404
+    // and would otherwise show up as failed requests.
+    private static readonly string[] IgnoredPaths = ["/health", "/openapi", "/scalar", "/robots933456.txt"];
 
     /// <param name="warning">
     /// Set when telemetry is misconfigured but the app can run without it;
@@ -41,7 +44,7 @@ public static class Observability
                 .SetSampler(new DropOrphanClientSpansSampler())
                 .AddAspNetCoreInstrumentation(options =>
                 {
-                    options.Filter = context => !IgnoredPaths.Any(p => context.Request.Path.StartsWithSegments(p));
+                    options.Filter = context => !IsIgnoredPath(context.Request.Path);
                     options.RecordException = true;
                 })
                 .AddHttpClientInstrumentation()
@@ -79,6 +82,10 @@ public static class Observability
 
         return builder;
     }
+
+    /// <summary>Requests that are not traced: probes, docs and the root.</summary>
+    public static bool IsIgnoredPath(PathString path) =>
+        !path.HasValue || path.Value == "/" || IgnoredPaths.Any(p => path.StartsWithSegments(p));
 
     /// <summary>
     /// Same shape check the exporter does: "key=value" segments separated by

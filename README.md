@@ -24,6 +24,29 @@ tardar unos segundos extra mientras el App Service y la base de datos
 interfaz de Scalar solo está habilitada en desarrollo (buena práctica: no se
 expone documentación interactiva de la API en un entorno público).
 
+### Infraestructura como código (Bicep)
+
+Toda la infraestructura de Azure está descrita en [`infra/`](infra/) con
+Bicep, en vez de depender de clics en el portal: App Service F1, Azure SQL
+serverless con la oferta gratuita (se pausa en vez de cobrar si se agota),
+Application Insights sobre un área de trabajo con límite diario de ingesta,
+y la identidad administrada con la que GitHub Actions despliega por OIDC,
+con permiso solo sobre la web app.
+
+```bash
+infra/deploy.sh           # what-if: muestra qué cambiaría, sin tocar nada
+infra/deploy.sh --apply   # vista previa y, tras confirmar, despliega
+```
+
+- **Sin secretos en el repo.** Las claves (JWT, secretos de clientes, cadena
+  de SQL, RabbitMQ) se pasan como parámetros `@secure()`: el script las toma
+  de variables de entorno o, si no están, reutiliza las que ya tiene la web
+  app, así que redesplegar no las cambia.
+- **Configuración derivada, no pegada a mano.** La cadena de conexión de
+  Application Insights sale del propio recurso. Pegarla a mano mal fue la
+  causa de una caída real (ver Observabilidad).
+- **Validado en CI:** cada push compila las plantillas Bicep.
+
 ## Arquitectura
 
 ```
@@ -399,7 +422,9 @@ que decide si alguien escucha.
 aunque no haya nada pendiente; registrado tal cual, serían unas 8.600
 trazas SQL al día sin información útil. Un *sampler* descarta las llamadas
 salientes sin padre (SQL o HTTP fuera de una petición o de un lote), y se
-excluyen `/health` y la documentación de la API. Los logs siguen en Serilog
+excluyen `/health`, la documentación de la API, la raíz y la sonda con la
+que App Service comprueba que el contenedor arrancó (`/robots933456.txt`),
+que siempre responden 404 y solo ensuciarían los gráficos de errores. Los logs siguen en Serilog
 y no se exportan. En Azure, el área de trabajo tiene un límite diario de
 ingesta para no salir del nivel gratuito.
 
@@ -523,7 +548,7 @@ sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
 - El cliente ERP y el servicio de notificaciones son simulados para que el
   proyecto corra sin credenciales externas.
-- Un solo cliente configurado y tokens emitidos por la propia API, sin
+- Clientes configurados en la propia API y tokens emitidos por ella, sin
   refresh tokens ni un proveedor de identidad externo (Entra ID, Auth0):
   suficiente para demostrar el flujo client credentials de punta a punta
   sin depender de un servicio de pago.
