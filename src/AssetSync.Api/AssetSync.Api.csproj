@@ -17,6 +17,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Npgsql.OpenTelemetry" Version="10.0.3" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
     <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.19.1" />
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.19.0" />
@@ -32,6 +33,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AssetSync.Application\AssetSync.Application.csproj" />
     <ProjectReference Include="..\AssetSync.Infrastructure\AssetSync.Infrastructure.csproj" />
+    <ProjectReference Include="..\AssetSync.Migrations.PostgreSql\AssetSync.Migrations.PostgreSql.csproj" />
   </ItemGroup>
 
 </Project>

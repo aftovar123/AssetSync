@@ -47,17 +47,28 @@ builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document,
     document.Security = [new OpenApiSecurityRequirement { [new OpenApiSecuritySchemeReference("Bearer", document)] = [] }];
     return Task.CompletedTask;
 }));
-// Retries transient SQL failures (deadlock victims, dropped connections, and
-// the Azure SQL serverless database still waking up from auto-pause) with
-// exponential backoff, instead of surfacing them as 500s. Every write here
-// is a single SaveChanges, so there is no user transaction to wrap manually.
-builder.Services.AddDbContext<AssetSyncDbContext>(options =>
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString("AssetSyncDb"),
-        sql => sql.EnableRetryOnFailure(
+// Retries transient database failures (deadlock victims, dropped
+// connections, and the Azure SQL serverless database still waking up from
+// auto-pause) with exponential backoff, instead of surfacing them as 500s.
+// Every write here is a single SaveChanges, so there is no user transaction
+// to wrap manually. SQL Server is the default; an unknown provider fails at
+// startup.
+var databaseProvider = builder.Configuration.GetValue("Database:Provider", DatabaseProvider.SqlServer);
+var connectionString = builder.Configuration.GetConnectionString("AssetSyncDb");
+builder.Services.AddDbContext<AssetSyncDbContext>(options => _ = databaseProvider switch
+{
+    DatabaseProvider.SqlServer => options.UseSqlServer(connectionString, sql => sql.EnableRetryOnFailure(
+        maxRetryCount: 5,
+        maxRetryDelay: TimeSpan.FromSeconds(10),
+        errorNumbersToAdd: null)),
+    DatabaseProvider.PostgreSql => options.UseNpgsql(connectionString, npgsql => npgsql
+        .MigrationsAssembly("AssetSync.Migrations.PostgreSql")
+        .EnableRetryOnFailure(
             maxRetryCount: 5,
             maxRetryDelay: TimeSpan.FromSeconds(10),
-            errorNumbersToAdd: null)));
+            errorCodesToAdd: null)),
+    _ => throw new InvalidOperationException($"Unsupported Database:Provider '{databaseProvider}'."),
+});
 builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssembly(typeof(AssetSync.Application.AssemblyMarker).Assembly);

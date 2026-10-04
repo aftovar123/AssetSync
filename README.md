@@ -54,8 +54,9 @@ src/
   AssetSync.Domain/         # Entidades y reglas — sin dependencias externas
   AssetSync.Application/    # Comandos y handlers (MediatR), contratos que
                              # Domain no conoce (repositorios, integraciones)
-  AssetSync.Infrastructure/ # EF Core + SQL Server, cliente ERP simulado,
-                             # BackgroundService que procesa el outbox
+  AssetSync.Infrastructure/ # EF Core (SQL Server o PostgreSQL), cliente ERP
+                             # simulado, BackgroundService que procesa el outbox
+  AssetSync.Migrations.PostgreSql/ # Migraciones de EF Core para PostgreSQL
   AssetSync.Api/            # Composición: DI, endpoints REST
 tests/
   AssetSync.Tests/          # xUnit + Moq
@@ -98,8 +99,11 @@ deja de reintentarse para siempre.
 distintos: si dos instancias de `OutboxProcessor` corrieran a la vez, un
 simple `SELECT` seguido de un `UPDATE` dejaría una ventana donde ambas
 podrían tomar el mismo mensaje y sincronizarlo dos veces. `ClaimPendingAsync`
-lo resuelve con un solo `UPDATE ... OUTPUT` — atómico en SQL Server — que
-mueve el mensaje a `Processing` y lo devuelve en la misma sentencia. Un
+lo resuelve con una sola sentencia atómica que mueve el mensaje a
+`Processing` y lo devuelve a la vez: `UPDATE TOP ... OUTPUT` en SQL Server, y
+en PostgreSQL un `UPDATE ... RETURNING` sobre una subconsulta con
+`FOR UPDATE SKIP LOCKED`, el patrón clásico de cola en Postgres (un proceso
+salta las filas que otro está tomando en vez de esperarlas). Un
 mensaje que quedó en `Processing` más de 2 minutos (su instancia se cayó a
 mitad del proceso) vuelve a estar disponible para reclamarse, en vez de
 perderse para siempre.
@@ -195,6 +199,22 @@ dotnet user-secrets set "ConnectionStrings:AssetSyncDb" \
   --project src/AssetSync.Api
 ```
 
+**Con PostgreSQL** en vez de SQL Server: el motor se elige con
+`Database:Provider` (`SqlServer` por defecto, como en producción, o
+`PostgreSql`). Cada motor tiene sus propias migraciones, porque EF Core las
+genera para un proveedor concreto; las de PostgreSQL viven en
+`AssetSync.Migrations.PostgreSql`.
+
+```bash
+docker run -d --name assetsync-postgres -e POSTGRES_PASSWORD="<contraseña>" \
+  -p 127.0.0.1:5432:5432 -v assetsync-pg-data:/var/lib/postgresql/data postgres:17-alpine
+dotnet user-secrets set "Database:Provider" "PostgreSql" --project src/AssetSync.Api
+dotnet user-secrets set "ConnectionStrings:AssetSyncDb" \
+  "Host=127.0.0.1;Port=5432;Database=assetsync;Username=postgres;Password=<contraseña>" \
+  --project src/AssetSync.Api
+dotnet ef database update --project src/AssetSync.Migrations.PostgreSql --startup-project src/AssetSync.Api
+```
+
 RabbitMQ es opcional en desarrollo: sin configurar, la API corre igual —
 `messaging` simplemente aparece `Degraded` en `/health` (ver sección de
 arquitectura orientada a eventos). Para probarlo localmente, con
@@ -253,13 +273,13 @@ segundos después el `OutboxProcessor` ya la sincronizó.
 ### Health checks
 
 `GET /health` no solo confirma que el proceso está vivo: incluye un check de
-`SQL Server` (`CanConnectAsync`) y uno propio del dominio, `outbox`, que se
+la base de datos (`CanConnectAsync`) y uno propio del dominio, `outbox`, que se
 pone en `Degraded` si algún mensaje llegó a `Failed` (agotó sus reintentos) —
 algo que un simple ping a la base de datos nunca revelaría.
 
 ```json
 {"status":"Healthy","checks":[
-  {"name":"database","status":"Healthy","description":"SQL Server reachable."},
+  {"name":"database","status":"Healthy","description":"Database reachable."},
   {"name":"outbox","status":"Healthy","description":"No dead-lettered outbox messages."}
 ]}
 ```
@@ -303,7 +323,7 @@ devuelve `429`, y `/health` sigue respondiendo `200` durante todo el proceso.
 ### Acceso a datos: reintentos, lotes y paginación
 
 - **Reintentos ante fallos transitorios.** `EnableRetryOnFailure` reintenta
-  con backoff exponencial los errores pasajeros de SQL Server — una
+  con backoff exponencial los errores pasajeros de la base de datos — una
   transacción elegida como víctima de un deadlock, una conexión caída, o la
   base de datos serverless de Azure todavía despertando de su pausa
   automática — en vez de devolver un `500`. Como cada escritura es un único
@@ -476,20 +496,24 @@ Los endpoints con scope requieren `Authorization: Bearer <token>`; "No" = públi
 ```bash
 dotnet test                                   # todo (las de integración necesitan Docker)
 dotnet test tests/AssetSync.Tests             # solo unitarias, en un segundo y sin Docker
-dotnet test tests/AssetSync.IntegrationTests  # solo integración
+dotnet test tests/AssetSync.IntegrationTests  # solo integración, contra SQL Server
+ASSETSYNC_TEST_DATABASE=PostgreSql dotnet test tests/AssetSync.IntegrationTests  # contra PostgreSQL
 ```
 
-Dos niveles: **104 tests** en total, que también corren en GitHub Actions
-en cada push.
+Dos niveles: **122 tests** en total (95 unitarias y 27 de integración), que
+también corren en GitHub Actions en cada push; las de integración, dos
+veces: contra SQL Server y contra PostgreSQL.
 
-### Integración: la API real contra SQL Server real
+### Integración: la API real contra SQL Server y PostgreSQL reales
 
 27 tests que levantan la aplicación completa con `WebApplicationFactory`
 —el mismo `Program`, middleware, políticas de autorización y mapeos de EF
-Core que producción— contra un SQL Server desechable que
+Core que producción— contra una base de datos desechable que
 [Testcontainers](https://testcontainers.com/) crea en Docker al empezar y
-destruye al terminar. Así se prueba lo que una base en memoria no puede
-ejecutar, como el `UPDATE TOP ... OUTPUT` del outbox. Solo tres cosas
+destruye al terminar: SQL Server por defecto, o PostgreSQL con
+`ASSETSYNC_TEST_DATABASE=PostgreSql`. Así se prueba lo que una base en
+memoria no puede ejecutar, como el claim atómico del outbox y las
+migraciones de cada motor. Solo tres cosas
 difieren de producción, a propósito: el cliente ERP siempre responde bien
 (el simulado falla al azar), el ciclo del outbox se dispara a mano en vez
 de cada 10 segundos, y el rate limiting se levanta porque todas las
@@ -512,7 +536,7 @@ peticiones de prueba salen de la misma IP.
 
 ### Unitarias
 
-77 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
+95 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
 sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
 - **Outbox y sincronización**: `SyncWorkOrderCommandHandler`,

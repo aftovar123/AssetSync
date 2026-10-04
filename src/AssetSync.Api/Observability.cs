@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using AssetSync.Application.Common;
 using Azure.Monitor.OpenTelemetry.Exporter;
+using Npgsql;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
@@ -10,8 +11,9 @@ namespace AssetSync.Api;
 
 /// <summary>
 /// OpenTelemetry traces and metrics: incoming HTTP requests, outgoing HTTP
-/// calls, SQL commands, runtime metrics, and the app's own outbox/ERP
-/// telemetry (see AssetSyncTelemetry). The instrumentation is always the
+/// calls, database commands (SQL Server or PostgreSQL), runtime metrics, and
+/// the app's own outbox/ERP telemetry (see AssetSyncTelemetry). The
+/// instrumentation is always the
 /// same; where it goes depends only on configuration:
 /// - APPLICATIONINSIGHTS_CONNECTION_STRING set → Azure Monitor (production);
 /// - OTEL_EXPORTER_OTLP_ENDPOINT set → any OTLP backend, e.g. the Aspire
@@ -49,6 +51,7 @@ public static class Observability
                 })
                 .AddHttpClientInstrumentation()
                 .AddSqlClientInstrumentation()
+                .AddNpgsql()
                 .AddSource(AssetSyncTelemetry.Name))
             .WithMetrics(metrics => metrics
                 .AddAspNetCoreInstrumentation()

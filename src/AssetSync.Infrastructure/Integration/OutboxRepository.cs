@@ -15,18 +15,35 @@ public class OutboxRepository(AssetSyncDbContext db, IClock clock) : IOutboxRepo
         var now = clock.UtcNow;
         var staleBefore = now - staleAfter;
 
-        // A single UPDATE...OUTPUT is one atomic statement in SQL Server —
-        // unlike a SELECT followed by a separate UPDATE, two OutboxProcessor
-        // instances running this at the same moment cannot both claim the
-        // same row. Rows already Processing but past staleBefore are
-        // reclaimed too, in case whoever claimed them crashed mid-batch.
-        var claimedIds = await db.Database.SqlQuery<int>($"""
-            UPDATE TOP ({maxBatchSize}) OutboxMessages
-            SET Status = 'Processing', ClaimedAt = {now}
-            OUTPUT INSERTED.Id
-            WHERE Status = 'Pending'
-               OR (Status = 'Processing' AND ClaimedAt < {staleBefore})
-            """).ToListAsync(cancellationToken);
+        // The claim is one atomic statement, so two OutboxProcessor instances
+        // running it at the same moment cannot both claim the same row (a
+        // SELECT followed by a separate UPDATE could). Rows already
+        // Processing but past staleBefore are reclaimed too, in case whoever
+        // claimed them crashed mid-batch.
+        var claimedIds = db.Database.IsNpgsql()
+            // PostgreSQL has no UPDATE ... LIMIT: the subquery locks up to
+            // maxBatchSize rows and SKIP LOCKED makes a concurrent claim pass
+            // over rows another transaction is taking instead of waiting.
+            ? await db.Database.SqlQuery<int>($"""
+                UPDATE "OutboxMessages"
+                SET "Status" = 'Processing', "ClaimedAt" = {now}
+                WHERE "Id" IN (
+                    SELECT "Id" FROM "OutboxMessages"
+                    WHERE "Status" = 'Pending'
+                       OR ("Status" = 'Processing' AND "ClaimedAt" < {staleBefore})
+                    ORDER BY "Id"
+                    LIMIT {maxBatchSize}
+                    FOR UPDATE SKIP LOCKED)
+                RETURNING "Id"
+                """).ToListAsync(cancellationToken)
+            // SQL Server: a single UPDATE TOP ... OUTPUT.
+            : await db.Database.SqlQuery<int>($"""
+                UPDATE TOP ({maxBatchSize}) OutboxMessages
+                SET Status = 'Processing', ClaimedAt = {now}
+                OUTPUT INSERTED.Id
+                WHERE Status = 'Pending'
+                   OR (Status = 'Processing' AND ClaimedAt < {staleBefore})
+                """).ToListAsync(cancellationToken);
 
         if (claimedIds.Count == 0)
         {

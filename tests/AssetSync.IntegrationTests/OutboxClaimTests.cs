@@ -8,9 +8,10 @@ namespace AssetSync.IntegrationTests;
 
 /// <summary>
 /// The guarantee the outbox design rests on — two processors never claim
-/// the same message — checked against real SQL Server, where the
-/// UPDATE TOP ... OUTPUT statement actually runs. The in-memory provider
-/// used by the unit tests cannot execute it at all.
+/// the same message — checked against a real database, where the claim
+/// statement actually runs (UPDATE TOP ... OUTPUT on SQL Server, FOR UPDATE
+/// SKIP LOCKED on PostgreSQL). The in-memory provider used by the unit tests
+/// cannot execute either.
 /// </summary>
 [Collection(ApiCollection.Name)]
 public class OutboxClaimTests(AssetSyncApiFactory factory)

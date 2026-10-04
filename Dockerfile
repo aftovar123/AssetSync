@@ -4,6 +4,7 @@ WORKDIR /src
 COPY src/AssetSync.Domain/AssetSync.Domain.csproj src/AssetSync.Domain/
 COPY src/AssetSync.Application/AssetSync.Application.csproj src/AssetSync.Application/
 COPY src/AssetSync.Infrastructure/AssetSync.Infrastructure.csproj src/AssetSync.Infrastructure/
+COPY src/AssetSync.Migrations.PostgreSql/AssetSync.Migrations.PostgreSql.csproj src/AssetSync.Migrations.PostgreSql/
 COPY src/AssetSync.Api/AssetSync.Api.csproj src/AssetSync.Api/
 RUN dotnet restore src/AssetSync.Api/AssetSync.Api.csproj
 

@@ -4,6 +4,7 @@
     <Project Path="src/AssetSync.Application/AssetSync.Application.csproj" />
     <Project Path="src/AssetSync.Domain/AssetSync.Domain.csproj" />
     <Project Path="src/AssetSync.Infrastructure/AssetSync.Infrastructure.csproj" />
+    <Project Path="src/AssetSync.Migrations.PostgreSql/AssetSync.Migrations.PostgreSql.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AssetSync.IntegrationTests/AssetSync.IntegrationTests.csproj" />

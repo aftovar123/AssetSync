@@ -9,7 +9,7 @@ public class DatabaseHealthCheck(AssetSyncDbContext db) : IHealthCheck
     {
         var canConnect = await db.Database.CanConnectAsync(cancellationToken);
         return canConnect
-            ? HealthCheckResult.Healthy("SQL Server reachable.")
-            : HealthCheckResult.Unhealthy("Cannot reach SQL Server.");
+            ? HealthCheckResult.Healthy("Database reachable.")
+            : HealthCheckResult.Unhealthy("Cannot reach the database.");
     }
 }

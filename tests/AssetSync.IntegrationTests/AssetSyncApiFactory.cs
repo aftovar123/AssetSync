@@ -11,16 +11,20 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using DotNet.Testcontainers.Containers;
 using Testcontainers.MsSql;
+using Testcontainers.PostgreSql;
 
 namespace AssetSync.IntegrationTests;
 
 /// <summary>
 /// Runs the real API — the same Program, middleware, auth policies and EF
-/// Core mappings as production — against a throwaway SQL Server container,
-/// so SQL Server-specific behaviour (the UPDATE...OUTPUT outbox claim, the
-/// retrying execution strategy) is exercised for real. Only three things
-/// differ from production, each on purpose:
+/// Core mappings as production — against a throwaway database container, so
+/// provider-specific behaviour (the atomic outbox claim, the retrying
+/// execution strategy, the migrations) is exercised for real. SQL Server by
+/// default, as in production; set ASSETSYNC_TEST_DATABASE=PostgreSql to run
+/// the same suite against PostgreSQL. Only three things differ from
+/// production, each on purpose:
 /// - the ERP client always succeeds, so no test fails at random;
 /// - the outbox timer loop is off, and tests drain the outbox explicitly;
 /// - the per-IP rate limit is lifted, since every test request shares one IP.
@@ -32,7 +36,15 @@ public sealed class AssetSyncApiFactory : WebApplicationFactory<Program>, IAsync
     public const string AdminClientId = "asset-admin";
     public const string AdminSecret = "asset-admin-test-secret";
 
-    private readonly MsSqlContainer _sql = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build();
+    public static readonly DatabaseProvider Provider = Enum.Parse<DatabaseProvider>(
+        Environment.GetEnvironmentVariable("ASSETSYNC_TEST_DATABASE") ?? nameof(DatabaseProvider.SqlServer),
+        ignoreCase: true);
+
+    private readonly IDatabaseContainer _sql = Provider switch
+    {
+        DatabaseProvider.PostgreSql => new PostgreSqlBuilder("postgres:17-alpine").Build(),
+        _ => new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest").Build(),
+    };
 
     public async Task InitializeAsync()
     {
@@ -45,6 +57,7 @@ public sealed class AssetSyncApiFactory : WebApplicationFactory<Program>, IAsync
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("IntegrationTests");
+        builder.UseSetting("Database:Provider", Provider.ToString());
         builder.UseSetting("ConnectionStrings:AssetSyncDb", _sql.GetConnectionString());
         builder.UseSetting("Jwt:SigningKey", "integration-tests-signing-key-at-least-32-bytes");
         builder.UseSetting("Auth:Clients:0:ClientId", ErpClientId);
