@@ -9,13 +9,13 @@ dotnet test tests/AssetSync.IntegrationTests  # solo integración, contra SQL Se
 ASSETSYNC_TEST_DATABASE=PostgreSql dotnet test tests/AssetSync.IntegrationTests  # contra PostgreSQL
 ```
 
-**122 tests** (95 unitarias y 27 de integración) que corren en GitHub
+**125 tests** (96 unitarias y 29 de integración) que corren en GitHub
 Actions en cada push; las de integración, dos veces: contra SQL Server y
 contra PostgreSQL.
 
 ## Integración: la API real contra bases de datos reales
 
-27 tests que levantan la aplicación completa con `WebApplicationFactory`
+29 tests que levantan la aplicación completa con `WebApplicationFactory`
 —el mismo `Program`, middleware, políticas de autorización y mapeos de EF
 Core que producción— contra una base de datos desechable que
 [Testcontainers](https://testcontainers.com/) crea en Docker al empezar y
@@ -40,13 +40,14 @@ las peticiones de prueba salen de la misma IP.
   conexiones separadas nunca obtienen el mismo mensaje; y un mensaje
   atascado en `Processing` se recupera solo después de los 2 minutos,
   nunca uno que otro procesador está trabajando.
-- **Paginación y validación por HTTP**: páginas estables y sin
-  solapamiento, `pageSize` limitado a 100, `400` con errores por campo, y
-  `/health` reportando la base real.
+- **Paginación, validación y formato por HTTP**: páginas estables y sin
+  solapamiento, `pageSize` limitado a 100, `400` con errores por campo, `400`
+  (no `500`) ante un JSON con un tipo equivocado, estados como texto y fechas
+  en UTC al leerlas de la base, y `/health` reportando la base real.
 
 ## Unitarias
 
-95 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
+96 tests con xUnit y Moq — sin base de datos real, sin reloj del sistema, y
 sin esperar tiempo real salvo donde se prueba backoff de verdad:
 
 - **Outbox y sincronización**: `SyncWorkOrderCommandHandler`,

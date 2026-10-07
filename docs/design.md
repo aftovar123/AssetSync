@@ -76,8 +76,9 @@ consulta `IAssetRepository` de verdad — no solo "¿es mayor que cero?", sino
 
 Un `GlobalExceptionHandler` (`IExceptionHandler`) traduce eso a respuestas
 HTTP: `ValidationException` → `400` con el detalle por campo,
-`NotFoundException` → `404`, cualquier otra excepción → `500` genérico sin
-filtrar detalles internos:
+`NotFoundException` → `404`, una petición que ASP.NET Core no pudo leer (JSON
+mal formado, un texto donde va un número) → `400`, y cualquier otra
+excepción → `500` genérico sin filtrar detalles internos:
 
 ```bash
 $ curl -X POST http://localhost:5188/work-orders -d '{"assetId":9999,"description":""}'
@@ -112,6 +113,11 @@ $ curl -X POST http://localhost:5188/work-orders/99999/complete
   `{ items, page, pageSize, totalCount, totalPages }`, con un `ORDER BY`
   estable y sin *change tracking*. Los valores fuera de rango se ajustan en
   vez de rechazarse, así que ningún cliente puede pedir la tabla completa.
+- **Formato consistente.** Los estados se devuelven como texto
+  (`"Processed"`, `"Completed"`) y todas las fechas en UTC con la `Z` final,
+  tanto al crear un registro como al leerlo de la base: SQL Server no guarda
+  el tipo de fecha, así que un convertidor de EF Core las marca como UTC al
+  leerlas.
 
 ## Health checks
 

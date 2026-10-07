@@ -48,6 +48,22 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
+    public async Task TryHandleAsync_BadHttpRequestException_KeepsItsClientErrorStatus()
+    {
+        var context = CreateContext(out var body);
+        var exception = new BadHttpRequestException(
+            "Failed to read parameter \"CreateWorkOrderCommand command\" from the request body as JSON.",
+            StatusCodes.Status400BadRequest);
+
+        var handled = await _handler.TryHandleAsync(context, exception, CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        var problem = await ReadBody<ProblemDetails>(body);
+        Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+    }
+
+    [Fact]
     public async Task TryHandleAsync_UnknownException_Writes500WithoutLeakingDetails()
     {
         var context = CreateContext(out var body);

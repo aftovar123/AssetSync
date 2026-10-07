@@ -23,7 +23,7 @@ inactividad puede tardar unos segundos mientras la base de datos despierta.
 | Seguridad | OAuth2 client credentials, JWT con un scope por área, rate limiting | [Autenticación](docs/authentication.md) |
 | Observabilidad | OpenTelemetry → Application Insights, trazas y métricas propias, Serilog | [Observabilidad](docs/observability.md) |
 | Infraestructura | Azure App Service + Azure SQL descritos con **Bicep**, despliegue por OIDC sin secretos | [Infraestructura](docs/infrastructure.md) |
-| Pruebas y CI/CD | 122 tests; integración con Testcontainers contra los dos motores en cada push | [Pruebas](docs/testing.md) |
+| Pruebas y CI/CD | 125 tests; integración con Testcontainers contra los dos motores en cada push | [Pruebas](docs/testing.md) |
 
 ## Arquitectura
 
@@ -132,7 +132,7 @@ dotnet test tests/AssetSync.IntegrationTests  # integración contra SQL Server (
 ASSETSYNC_TEST_DATABASE=PostgreSql dotnet test tests/AssetSync.IntegrationTests  # contra PostgreSQL
 ```
 
-95 unitarias y 27 de integración que levantan la API completa contra bases
+96 unitarias y 29 de integración que levantan la API completa contra bases
 de datos reales en Docker. En GitHub Actions corren en cada push, las de
 integración contra los dos motores. Ver [Pruebas](docs/testing.md).
 

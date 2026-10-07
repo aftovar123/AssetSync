@@ -20,6 +20,7 @@ using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using Serilog;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -78,6 +79,11 @@ builder.Services.AddValidatorsFromAssembly(typeof(AssetSync.Application.Assembly
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
+
+// Statuses go out as "Processed" or "Completed" instead of 2, so a client
+// does not need to know the enum's order; numbers are still accepted on input.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddHealthChecks()
     .AddCheck<DatabaseHealthCheck>("database")

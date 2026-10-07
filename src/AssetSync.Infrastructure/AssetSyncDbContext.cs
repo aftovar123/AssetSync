@@ -1,5 +1,6 @@
 using AssetSync.Domain;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace AssetSync.Infrastructure;
 
@@ -10,6 +11,21 @@ public class AssetSyncDbContext(DbContextOptions<AssetSyncDbContext> options) : 
     public DbSet<MaintenanceRecord> MaintenanceRecords => Set<MaintenanceRecord>();
     public DbSet<IntegrationLog> IntegrationLogs => Set<IntegrationLog>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    // Every timestamp in the app is UTC (IClock.UtcNow), but SQL Server's
+    // datetime2 does not store the kind, so values read back came out as
+    // Unspecified and were serialized without the trailing "Z". Marking them
+    // as UTC on read makes the API return the same format whether the entity
+    // was just created or loaded from the database.
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTime>().HaveConversion<UtcDateTimeConverter>();
+        configurationBuilder.Properties<DateTime?>().HaveConversion<UtcDateTimeConverter>();
+    }
+
+    private sealed class UtcDateTimeConverter() : ValueConverter<DateTime, DateTime>(
+        value => value,
+        value => DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

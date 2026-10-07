@@ -55,6 +55,35 @@ public class PaginationAndValidationTests(AssetSyncApiFactory factory)
     }
 
     [Fact]
+    public async Task MistypedJsonField_Returns400NotA500()
+    {
+        var erp = await factory.CreateClientAsync(ErpClientId, ErpSecret);
+
+        // An asset code where the numeric id goes: the client's mistake.
+        var response = await erp.PostAsJsonAsync("/work-orders", new { assetId = "BOMBA-001", description = "Bad type" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task WorkOrders_ReadBackFromTheDatabase_HaveTextStatusAndUtcTimestamps()
+    {
+        var admin = await factory.CreateClientAsync(AdminClientId, AdminSecret);
+        var asset = await (await admin.PostAsJsonAsync("/assets", new { code = ApiTestHelpers.UniqueCode("FMT"), name = "Format test" })).ReadJsonAsync();
+        var erp = await factory.CreateClientAsync(ErpClientId, ErpSecret);
+        var created = await (await erp.PostAsJsonAsync("/work-orders", new { assetId = asset.GetProperty("id").GetInt32(), description = "Format test" })).ReadJsonAsync();
+        var id = created.GetProperty("id").GetInt32();
+
+        var listed = (await (await factory.CreateClient().GetAsync("/work-orders?pageSize=100")).ReadJsonAsync())
+            .GetProperty("items").EnumerateArray()
+            .Single(w => w.GetProperty("id").GetInt32() == id);
+
+        Assert.Equal("Open", listed.GetProperty("status").GetString());
+        Assert.EndsWith("Z", created.GetProperty("createdAt").GetString());
+        Assert.EndsWith("Z", listed.GetProperty("createdAt").GetString());
+    }
+
+    [Fact]
     public async Task Health_ReportsTheRealDatabaseAsHealthy()
     {
         var health = await (await factory.CreateClient().GetAsync("/health")).ReadJsonAsync();

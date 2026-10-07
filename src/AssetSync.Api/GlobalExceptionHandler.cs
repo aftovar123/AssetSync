@@ -8,8 +8,10 @@ namespace AssetSync.Api;
 /// <summary>
 /// Single place that turns exceptions into ProblemDetails responses.
 /// FluentValidation failures become a 400 with per-field messages,
-/// NotFoundException becomes a 404, and anything else is logged and
-/// returned as a generic 500 — no internal details leak to the client.
+/// NotFoundException becomes a 404, a request ASP.NET Core could not read
+/// (malformed JSON, a text where a number goes) keeps its own 4xx, and
+/// anything else is logged and returned as a generic 500 — no internal
+/// details leak to the client.
 /// </summary>
 public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
 {
@@ -33,6 +35,18 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
                 {
                     Status = StatusCodes.Status404NotFound,
                     Title = notFoundException.Message,
+                }, cancellationToken);
+                return true;
+
+            // Minimal APIs throw this in Development when the body cannot be
+            // bound; elsewhere they answer 400 themselves. Either way it is
+            // the client's mistake, not a server error.
+            case BadHttpRequestException badRequest:
+                httpContext.Response.StatusCode = badRequest.StatusCode;
+                await httpContext.Response.WriteAsJsonAsync(new ProblemDetails
+                {
+                    Status = badRequest.StatusCode,
+                    Title = "The request body or parameters could not be read.",
                 }, cancellationToken);
                 return true;
 
