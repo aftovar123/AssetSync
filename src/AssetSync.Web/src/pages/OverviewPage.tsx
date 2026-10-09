@@ -3,7 +3,9 @@ import type { HealthStatus } from '../domain/models'
 import { useAssetCodes, useHealth, useWorkOrders } from '../api/queries'
 import { LoadError } from '../components/LoadError'
 import { SyncLine } from '../components/SyncLine'
+import { CompleteOrderButton } from '../components/CompleteOrderButton'
 import { WorkOrdersTable } from '../components/WorkOrdersTable'
+import { useOperatorSession } from '../session/useOperatorSession'
 import { countByStage } from '../domain/sync'
 
 const RECENT_WINDOW = 100
@@ -24,6 +26,7 @@ export function OverviewPage() {
   const orders = useWorkOrders(1, RECENT_WINDOW)
   const health = useHealth()
   const assetCodes = useAssetCodes()
+  const { can } = useOperatorSession()
 
   if (orders.isError) return <LoadError what="las órdenes de trabajo" onRetry={() => orders.refetch()} />
 
@@ -45,7 +48,11 @@ export function OverviewPage() {
           {items.length === 0 && !orders.isPending ? (
             <p className="empty">Todavía no hay órdenes de trabajo.</p>
           ) : (
-            <WorkOrdersTable orders={items.slice(0, 8)} assetCodes={assetCodes} />
+            <WorkOrdersTable
+              orders={items.slice(0, 8)}
+              assetCodes={assetCodes}
+              actions={can('workorders.write') ? (order) => <CompleteOrderButton order={order} /> : undefined}
+            />
           )}
         </section>
 

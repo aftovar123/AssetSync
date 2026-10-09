@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { WorkOrder } from '../domain/models'
 import { formatDateTime } from '../lib/format'
 import { StageTag } from './StageTag'
@@ -8,9 +9,11 @@ interface WorkOrdersTableProps {
   assetCodes: Map<number, string>
   /** The full list also shows when each order was created. */
   showCreated?: boolean
+  /** Per-row controls, such as completing the order; omitted when there are none. */
+  actions?: (order: WorkOrder) => ReactNode
 }
 
-export function WorkOrdersTable({ orders, assetCodes, showCreated = false }: WorkOrdersTableProps) {
+export function WorkOrdersTable({ orders, assetCodes, showCreated = false, actions }: WorkOrdersTableProps) {
   return (
     <table className="data-table">
       <thead>
@@ -21,6 +24,11 @@ export function WorkOrdersTable({ orders, assetCodes, showCreated = false }: Wor
           <th scope="col">Estado</th>
           {showCreated && <th scope="col">Creada</th>}
           <th scope="col">Completada</th>
+          {actions && (
+            <th scope="col">
+              <span className="visually-hidden">Acciones</span>
+            </th>
+          )}
         </tr>
       </thead>
       <tbody>
@@ -36,6 +44,7 @@ export function WorkOrdersTable({ orders, assetCodes, showCreated = false }: Wor
             </td>
             {showCreated && <td className="when">{formatDateTime(order.createdAt)}</td>}
             <td className="when">{formatDateTime(order.completedAt)}</td>
+            {actions && <td className="actions">{actions(order)}</td>}
           </tr>
         ))}
       </tbody>

@@ -24,6 +24,50 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await response.json()) as T
 }
 
+/** A 400 with per-field messages, keyed by camelCase field name. */
+export class ValidationError extends ApiError {
+  readonly fields: Record<string, string[]>
+
+  constructor(fields: Record<string, string[]>) {
+    super(400, 'Revisa los campos marcados.')
+    this.fields = fields
+  }
+}
+
+const statusMessages: Record<number, string> = {
+  401: 'Tu sesión de operador expiró. Inicia sesión de nuevo.',
+  403: 'Tu cliente no tiene permiso para esta acción.',
+  404: 'El registro ya no existe.',
+}
+
+/** An operator action: sends the session token and explains failures. */
+async function send<T>(path: string, accessToken: string, body?: unknown): Promise<T | undefined> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+
+  if (response.status === 400) {
+    const problem = (await response.json().catch(() => ({}))) as { errors?: Record<string, string[]> }
+    throw new ValidationError(camelCaseKeys(problem.errors ?? {}))
+  }
+  if (!response.ok) {
+    throw new ApiError(response.status, statusMessages[response.status] ?? `La API respondió ${response.status}.`)
+  }
+  // 202 Accepted and other empty answers have no body to read.
+  const text = await response.text()
+  return text ? (JSON.parse(text) as T) : undefined
+}
+
+function camelCaseKeys(errors: Record<string, string[]>): Record<string, string[]> {
+  return Object.fromEntries(Object.entries(errors).map(([key, value]) => [key.charAt(0).toLowerCase() + key.slice(1), value]))
+}
+
 export interface IssuedToken {
   accessToken: string
   scopes: Scope[]
@@ -61,4 +105,9 @@ export const api = {
     get<Paged<Asset>>(`/assets?page=${page}&pageSize=${pageSize}`, signal),
   workOrders: (page: number, pageSize: number, signal?: AbortSignal) =>
     get<Paged<WorkOrder>>(`/work-orders?page=${page}&pageSize=${pageSize}`, signal),
+  createWorkOrder: async (accessToken: string, order: { assetId: number; description: string }) =>
+    (await send<WorkOrder>('/work-orders', accessToken, order))!,
+  completeWorkOrder: async (accessToken: string, id: number) => {
+    await send(`/work-orders/${id}/complete`, accessToken)
+  },
 }

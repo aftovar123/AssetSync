@@ -191,6 +191,76 @@ textarea {
   border-radius: 4px;
 }
 
+.field--wide {
+  flex: 1 1 18rem;
+}
+
+.field__error {
+  font-size: var(--step--1);
+  color: var(--fault);
+}
+
+.inline-form {
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  background: var(--raised);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--process);
+  border-radius: 4px;
+}
+
+.inline-form h2 {
+  margin-bottom: var(--space-3);
+  font-size: var(--step-0);
+}
+
+.inline-form__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-4);
+}
+
+.inline-form__fields .field {
+  flex: 0 1 16rem;
+}
+
+.inline-form__fields .field--wide {
+  flex: 1 1 18rem;
+}
+
+.notice {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  color: var(--process);
+  background: var(--process-soft);
+  border-radius: 4px;
+}
+
+.row-action {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.row-action button {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--step--1);
+}
+
+.data-table .actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 /* ---------- Shell ---------- */
 
 .shell {

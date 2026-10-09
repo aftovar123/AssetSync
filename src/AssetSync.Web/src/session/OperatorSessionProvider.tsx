@@ -9,8 +9,15 @@ import { OperatorSessionContext } from './context'
  * script on the page can read a stored credential. The session also ends by
  * itself when the token expires.
  */
-export function OperatorSessionProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<OperatorSession | null>(null)
+export function OperatorSessionProvider({
+  children,
+  initialSession = null,
+}: {
+  children: ReactNode
+  /** Starts already signed in; used by tests. */
+  initialSession?: OperatorSession | null
+}) {
+  const [session, setSession] = useState<OperatorSession | null>(initialSession)
 
   const signIn = useCallback(async (clientId: string, clientSecret: string) => {
     const token = await api.requestToken(clientId, clientSecret)
