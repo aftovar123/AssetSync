@@ -4,6 +4,7 @@ import { Layout } from './components/Layout'
 import { AssetsPage } from './pages/AssetsPage'
 import { OverviewPage } from './pages/OverviewPage'
 import { WorkOrdersPage } from './pages/WorkOrdersPage'
+import { OperatorSessionProvider } from './session/OperatorSessionProvider'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -16,15 +17,17 @@ const queryClient = new QueryClient({
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<Layout />}>
-            <Route index element={<OverviewPage />} />
-            <Route path="ordenes" element={<WorkOrdersPage />} />
-            <Route path="activos" element={<AssetsPage />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <OperatorSessionProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<Layout />}>
+              <Route index element={<OverviewPage />} />
+              <Route path="ordenes" element={<WorkOrdersPage />} />
+              <Route path="activos" element={<AssetsPage />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </OperatorSessionProvider>
     </QueryClientProvider>
   )
 }

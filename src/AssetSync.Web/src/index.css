@@ -108,6 +108,89 @@ button:disabled {
   opacity: 0.6;
 }
 
+.button--primary {
+  color: var(--raised);
+  background: var(--process);
+  border-color: var(--process);
+}
+
+.button--primary:disabled {
+  color: var(--steel);
+  background: var(--panel);
+  border-color: var(--rule);
+  opacity: 1;
+}
+
+.button--primary:hover:not(:disabled) {
+  background: #234f70;
+  border-color: #234f70;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--ink);
+  background: var(--raised);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: var(--space-2) var(--space-3);
+}
+
+/* ---------- Forms and dialogs ---------- */
+
+.dialog {
+  width: min(30rem, calc(100vw - 2rem));
+  padding: var(--space-5);
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-top: 4px solid var(--process);
+  border-radius: 6px;
+}
+
+.dialog::backdrop {
+  background: rgba(31, 37, 41, 0.45);
+}
+
+.dialog__intro {
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--step--1);
+  color: var(--steel);
+}
+
+.dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+
+.field__hint {
+  font-size: var(--step--1);
+  color: var(--steel);
+}
+
+.field > span {
+  font-size: var(--step--1);
+  font-weight: 500;
+}
+
+.form-error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  color: var(--fault);
+  background: var(--fault-soft);
+  border-radius: 4px;
+}
+
 /* ---------- Shell ---------- */
 
 .shell {
@@ -162,6 +245,31 @@ button:disabled {
 .masthead__nav a.active {
   background: var(--ink);
   color: var(--raised);
+}
+
+.masthead__side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+}
+
+.operator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.operator__who {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.operator__can {
+  font-size: var(--step--1);
+  color: var(--steel);
 }
 
 /* A panel lamp: steady grey when fine, colour only when it is not. */

@@ -36,3 +36,17 @@ export interface HealthReport {
   totalDurationMs: number
   checks: { name: string; status: HealthStatus; description: string | null; durationMs: number }[]
 }
+
+/** What a token lets the operator do, one area each (OAuth2 scopes). */
+export type Scope = 'assets.write' | 'workorders.write' | 'integration.read'
+
+/**
+ * An operator signed in with a client's credentials. Lives only in memory:
+ * a reload signs the operator out, and nothing secret is ever stored.
+ */
+export interface OperatorSession {
+  clientId: string
+  scopes: Scope[]
+  accessToken: string
+  expiresAt: number
+}

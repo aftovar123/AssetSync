@@ -1,6 +1,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useHealth } from '../api/queries'
 import type { HealthStatus } from '../domain/models'
+import { OperatorStatus } from './OperatorStatus'
 
 const lampText: Record<HealthStatus | 'unknown', string> = {
   Healthy: 'API en línea',
@@ -25,10 +26,13 @@ export function Layout() {
           <NavLink to="/ordenes">Órdenes de trabajo</NavLink>
           <NavLink to="/activos">Activos</NavLink>
         </nav>
-        <p className={`lamp lamp--${status.toLowerCase()}`} role="status">
-          <span className="lamp__light" aria-hidden="true" />
-          {lampText[status]}
-        </p>
+        <div className="masthead__side">
+          <p className={`lamp lamp--${status.toLowerCase()}`} role="status">
+            <span className="lamp__light" aria-hidden="true" />
+            {lampText[status]}
+          </p>
+          <OperatorStatus />
+        </div>
       </header>
       <main className="content">
         <Outlet />
