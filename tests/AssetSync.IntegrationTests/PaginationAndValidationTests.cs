@@ -55,6 +55,19 @@ public class PaginationAndValidationTests(AssetSyncApiFactory factory)
     }
 
     [Fact]
+    public async Task DuplicateAssetCode_Returns400NotA500()
+    {
+        var admin = await factory.CreateClientAsync(AdminClientId, AdminSecret);
+        var code = ApiTestHelpers.UniqueCode("DUP");
+        await admin.PostAsJsonAsync("/assets", new { code, name = "First" });
+
+        var response = await admin.PostAsJsonAsync("/assets", new { code, name = "Second" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.True((await response.ReadJsonAsync()).GetProperty("errors").TryGetProperty("Code", out _));
+    }
+
+    [Fact]
     public async Task MistypedJsonField_Returns400NotA500()
     {
         var erp = await factory.CreateClientAsync(ErpClientId, ErpSecret);

@@ -12,6 +12,9 @@ public class AssetRepository(AssetSyncDbContext db) : IAssetRepository
     public Task<bool> ExistsAsync(int id, CancellationToken cancellationToken) =>
         db.Assets.AnyAsync(a => a.Id == id, cancellationToken);
 
+    public Task<bool> CodeExistsAsync(string code, CancellationToken cancellationToken) =>
+        db.Assets.AnyAsync(a => a.Code == code, cancellationToken);
+
     public Task SaveChangesAsync(CancellationToken cancellationToken) =>
         db.SaveChangesAsync(cancellationToken);
 }

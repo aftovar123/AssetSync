@@ -24,7 +24,7 @@ inactividad puede tardar unos segundos mientras la base de datos despierta.
 | Observabilidad | OpenTelemetry → Application Insights, trazas y métricas propias, Serilog | [Observabilidad](docs/observability.md) |
 | Infraestructura | Azure App Service + Azure SQL descritos con **Bicep**, despliegue por OIDC sin secretos | [Infraestructura](docs/infrastructure.md) |
 | Frontend | Panel de operación en React + TypeScript que muestra la sincronización en vivo | [Desarrollo local](docs/local-development.md#panel-web) |
-| Pruebas y CI/CD | 127 tests de la API, con integración en Testcontainers contra los dos motores, y pruebas del panel, en cada push | [Pruebas](docs/testing.md) |
+| Pruebas y CI/CD | 129 tests de la API, con integración en Testcontainers contra los dos motores, y pruebas del panel, en cada push | [Pruebas](docs/testing.md) |
 
 ## Arquitectura
 
@@ -135,7 +135,7 @@ dotnet test tests/AssetSync.IntegrationTests  # integración contra SQL Server (
 ASSETSYNC_TEST_DATABASE=PostgreSql dotnet test tests/AssetSync.IntegrationTests  # contra PostgreSQL
 ```
 
-96 unitarias y 31 de integración que levantan la API completa contra bases
+97 unitarias y 32 de integración que levantan la API completa contra bases
 de datos reales en Docker. En GitHub Actions corren en cada push, las de
 integración contra los dos motores. El panel tiene sus propias pruebas con
 Vitest (`npm test` en `src/AssetSync.Web`). Ver [Pruebas](docs/testing.md).

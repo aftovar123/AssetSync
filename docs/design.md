@@ -72,7 +72,9 @@ behavior de MediatR registrado una sola vez — corre todos los
 si algo falla, lanza `ValidationException` y el handler nunca se ejecuta. La
 regla de `AssetId` en `CreateWorkOrderCommandValidator` es un `MustAsync` que
 consulta `IAssetRepository` de verdad — no solo "¿es mayor que cero?", sino
-"¿ese activo existe?".
+"¿ese activo existe?". Del mismo modo, registrar un activo con un código que
+ya existe responde `400` con el error en el campo `Code`, en lugar de dejar
+que el índice único de la base de datos lo rechace como un `500`.
 
 Un `GlobalExceptionHandler` (`IExceptionHandler`) traduce eso a respuestas
 HTTP: `ValidationException` → `400` con el detalle por campo,
