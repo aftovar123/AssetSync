@@ -58,6 +58,25 @@ dotnet user-secrets set "ConnectionStrings:AssetSyncDb" \
 dotnet ef database update --project src/AssetSync.Migrations.PostgreSql --startup-project src/AssetSync.Api
 ```
 
+## Panel web
+
+El panel de operación vive en `src/AssetSync.Web` (React, TypeScript, Vite y
+TanStack Query) y requiere [Node.js](https://nodejs.org) 20.19 o superior. En
+desarrollo, Vite reenvía las llamadas de `/api` a la API local en el puerto
+5188, así que no hace falta configurar CORS:
+
+```bash
+cd src/AssetSync.Web
+npm install
+npm run dev   # http://localhost:5173
+```
+
+Las listas de órdenes se actualizan cada 5 segundos: al completar una orden
+se ve pasar de "En cola" a "Sincronizada" sin recargar. Para publicarlo en
+otro dominio, la dirección de la API se define al compilar con
+`VITE_API_BASE_URL`, y ese dominio se agrega a `Cors:AllowedOrigins` en la
+API.
+
 ## RabbitMQ (opcional)
 
 Sin configurar, la API corre igual: `messaging` aparece `Degraded` en

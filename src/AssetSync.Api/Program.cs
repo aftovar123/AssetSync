@@ -154,6 +154,17 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 
+// The web panel is served from its own origin (Azure Static Web Apps), so
+// the browser needs the API to allow it explicitly. Only the configured
+// origins are allowed, and only the methods and headers the panel uses; with
+// no origins configured (tests, local runs through the Vite proxy) CORS
+// stays off.
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy
+    .WithOrigins(allowedOrigins)
+    .WithMethods("GET", "POST")
+    .WithHeaders("Authorization", "Content-Type")));
+
 var app = builder.Build();
 
 if (telemetryWarning is not null)
@@ -174,6 +185,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+// Before the rate limiter, so a browser's preflight check is answered
+// without counting against the client's requests.
+app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();

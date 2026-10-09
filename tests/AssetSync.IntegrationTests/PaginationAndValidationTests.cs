@@ -83,6 +83,21 @@ public class PaginationAndValidationTests(AssetSyncApiFactory factory)
         Assert.EndsWith("Z", listed.GetProperty("createdAt").GetString());
     }
 
+    [Theory]
+    [InlineData(PanelOrigin, true)]
+    [InlineData("https://someone-else.example.test", false)]
+    public async Task Cors_AllowsOnlyTheConfiguredPanelOrigin(string origin, bool allowed)
+    {
+        var preflight = new HttpRequestMessage(HttpMethod.Options, "/work-orders");
+        preflight.Headers.Add("Origin", origin);
+        preflight.Headers.Add("Access-Control-Request-Method", "POST");
+        preflight.Headers.Add("Access-Control-Request-Headers", "authorization,content-type");
+
+        var response = await factory.CreateClient().SendAsync(preflight);
+
+        Assert.Equal(allowed, response.Headers.TryGetValues("Access-Control-Allow-Origin", out var values) && values.Single() == origin);
+    }
+
     [Fact]
     public async Task Health_ReportsTheRealDatabaseAsHealthy()
     {

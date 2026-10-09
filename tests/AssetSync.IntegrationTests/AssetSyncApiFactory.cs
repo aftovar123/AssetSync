@@ -35,6 +35,7 @@ public sealed class AssetSyncApiFactory : WebApplicationFactory<Program>, IAsync
     public const string ErpSecret = "erp-integration-test-secret";
     public const string AdminClientId = "asset-admin";
     public const string AdminSecret = "asset-admin-test-secret";
+    public const string PanelOrigin = "https://panel.example.test";
 
     public static readonly DatabaseProvider Provider = Enum.Parse<DatabaseProvider>(
         Environment.GetEnvironmentVariable("ASSETSYNC_TEST_DATABASE") ?? nameof(DatabaseProvider.SqlServer),
@@ -58,6 +59,7 @@ public sealed class AssetSyncApiFactory : WebApplicationFactory<Program>, IAsync
     {
         builder.UseEnvironment("IntegrationTests");
         builder.UseSetting("Database:Provider", Provider.ToString());
+        builder.UseSetting("Cors:AllowedOrigins:0", PanelOrigin);
         builder.UseSetting("ConnectionStrings:AssetSyncDb", _sql.GetConnectionString());
         builder.UseSetting("Jwt:SigningKey", "integration-tests-signing-key-at-least-32-bytes");
         builder.UseSetting("Auth:Clients:0:ClientId", ErpClientId);

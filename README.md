@@ -23,7 +23,8 @@ inactividad puede tardar unos segundos mientras la base de datos despierta.
 | Seguridad | OAuth2 client credentials, JWT con un scope por área, rate limiting | [Autenticación](docs/authentication.md) |
 | Observabilidad | OpenTelemetry → Application Insights, trazas y métricas propias, Serilog | [Observabilidad](docs/observability.md) |
 | Infraestructura | Azure App Service + Azure SQL descritos con **Bicep**, despliegue por OIDC sin secretos | [Infraestructura](docs/infrastructure.md) |
-| Pruebas y CI/CD | 125 tests; integración con Testcontainers contra los dos motores en cada push | [Pruebas](docs/testing.md) |
+| Frontend | Panel de operación en React + TypeScript que muestra la sincronización en vivo | [Desarrollo local](docs/local-development.md#panel-web) |
+| Pruebas y CI/CD | 127 tests de la API, con integración en Testcontainers contra los dos motores, y pruebas del panel, en cada push | [Pruebas](docs/testing.md) |
 
 ## Arquitectura
 
@@ -34,6 +35,7 @@ src/
   AssetSync.Infrastructure/        # EF Core, cliente ERP con Polly, procesador del outbox
   AssetSync.Migrations.PostgreSql/ # Migraciones de EF Core para PostgreSQL
   AssetSync.Api/                   # Composición: DI, endpoints REST, auth, telemetría
+  AssetSync.Web/                   # Panel de operación: React + TypeScript + Vite
 tests/
   AssetSync.Tests/                 # Unitarias: xUnit + Moq
   AssetSync.IntegrationTests/      # La API real contra SQL Server y PostgreSQL en Docker
@@ -108,6 +110,7 @@ para Windows, macOS, PostgreSQL y Docker están en
 dotnet tool restore
 dotnet ef database update --project src/AssetSync.Infrastructure --startup-project src/AssetSync.Api
 dotnet run --project src/AssetSync.Api   # interfaz de Scalar en /scalar/v1
+cd src/AssetSync.Web && npm install && npm run dev   # panel en http://localhost:5173
 ```
 
 ## Endpoints
@@ -132,9 +135,10 @@ dotnet test tests/AssetSync.IntegrationTests  # integración contra SQL Server (
 ASSETSYNC_TEST_DATABASE=PostgreSql dotnet test tests/AssetSync.IntegrationTests  # contra PostgreSQL
 ```
 
-96 unitarias y 29 de integración que levantan la API completa contra bases
+96 unitarias y 31 de integración que levantan la API completa contra bases
 de datos reales en Docker. En GitHub Actions corren en cada push, las de
-integración contra los dos motores. Ver [Pruebas](docs/testing.md).
+integración contra los dos motores. El panel tiene sus propias pruebas con
+Vitest (`npm test` en `src/AssetSync.Web`). Ver [Pruebas](docs/testing.md).
 
 ## Decisiones fuera de alcance (a propósito)
 

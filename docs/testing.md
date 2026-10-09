@@ -9,13 +9,13 @@ dotnet test tests/AssetSync.IntegrationTests  # solo integración, contra SQL Se
 ASSETSYNC_TEST_DATABASE=PostgreSql dotnet test tests/AssetSync.IntegrationTests  # contra PostgreSQL
 ```
 
-**125 tests** (96 unitarias y 29 de integración) que corren en GitHub
+**127 tests de la API** (96 unitarias y 31 de integración) que corren en GitHub
 Actions en cada push; las de integración, dos veces: contra SQL Server y
 contra PostgreSQL.
 
 ## Integración: la API real contra bases de datos reales
 
-29 tests que levantan la aplicación completa con `WebApplicationFactory`
+31 tests que levantan la aplicación completa con `WebApplicationFactory`
 —el mismo `Program`, middleware, políticas de autorización y mapeos de EF
 Core que producción— contra una base de datos desechable que
 [Testcontainers](https://testcontainers.com/) crea en Docker al empezar y
@@ -43,7 +43,8 @@ las peticiones de prueba salen de la misma IP.
 - **Paginación, validación y formato por HTTP**: páginas estables y sin
   solapamiento, `pageSize` limitado a 100, `400` con errores por campo, `400`
   (no `500`) ante un JSON con un tipo equivocado, estados como texto y fechas
-  en UTC al leerlas de la base, y `/health` reportando la base real.
+  en UTC al leerlas de la base, CORS que solo admite el origen del panel, y
+  `/health` reportando la base real.
 
 ## Unitarias
 
@@ -68,3 +69,11 @@ sin esperar tiempo real salvo donde se prueba backoff de verdad:
 - **Health checks y observabilidad**: `outbox` en `Degraded` con mensajes
   `Failed`, la validación de la cadena de Application Insights y las rutas
   que no se trazan.
+
+## Panel web
+
+Pruebas con Vitest y Testing Library en `src/AssetSync.Web` (`npm test`):
+cómo se clasifica cada orden en el camino al ERP y que la tubería de la
+línea de sincronización solo se anima cuando llega una orden a una
+estación, nunca en la primera carga. El CI además revisa el código con
+oxlint y compila el panel con TypeScript en modo estricto.

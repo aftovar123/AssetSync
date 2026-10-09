@@ -25,3 +25,20 @@ jobs:
         run: az bicep build --file infra/main.bicep --stdout > /dev/null
       - name: Build Docker image
         run: docker build -t assetsync-api .
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/AssetSync.Web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: src/AssetSync.Web/package-lock.json
+      - run: npm ci
+      - run: npx oxlint
+      - run: npm test
+      - run: npm run build
