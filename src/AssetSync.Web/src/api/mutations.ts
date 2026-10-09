@@ -34,5 +34,5 @@ export function useCreateWorkOrder() {
 }
 
 export function useCompleteWorkOrder() {
-  return useOperatorAction(api.completeWorkOrder, ['work-orders'])
+  return useOperatorAction(api.completeWorkOrder, ['work-orders', 'outbox'])
 }

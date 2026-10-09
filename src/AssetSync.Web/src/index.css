@@ -261,6 +261,91 @@ textarea {
   white-space: nowrap;
 }
 
+.button--quiet {
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--step--1);
+  color: var(--process);
+  background: transparent;
+  border-color: transparent;
+}
+
+.order-actions {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.dialog--wide {
+  width: min(40rem, calc(100vw - 2rem));
+}
+
+.queue-status {
+  font-size: var(--step--1);
+  font-weight: 500;
+}
+
+.queue-status--pending,
+.queue-status--processing {
+  color: var(--pending);
+}
+
+.queue-status--processed {
+  color: var(--process);
+}
+
+.queue-status--failed {
+  color: var(--fault);
+  font-weight: 600;
+}
+
+.attempts {
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attempt {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3) 0 var(--space-3) var(--space-4);
+  border-left: 4px solid var(--rule);
+  margin-bottom: var(--space-2);
+}
+
+.attempt--sent {
+  border-left-color: var(--process);
+}
+
+.attempt--failed {
+  border-left-color: var(--fault);
+}
+
+.attempt__result {
+  font-weight: 600;
+}
+
+.attempt__code,
+.attempt__error {
+  grid-column: 1 / -1;
+  font-size: var(--step--1);
+  color: var(--steel);
+}
+
+.attempt__code code {
+  padding: 0 var(--space-1);
+  font-size: var(--step--1);
+  color: var(--ink);
+  background: var(--raised);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  word-break: break-all;
+}
+
+.attempt__error {
+  color: var(--fault);
+}
+
 /* ---------- Shell ---------- */
 
 .shell {

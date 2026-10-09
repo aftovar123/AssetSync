@@ -72,7 +72,15 @@ npm run dev   # http://localhost:5173
 ```
 
 Las listas de órdenes se actualizan cada 5 segundos: al completar una orden
-se ve pasar de "En cola" a "Sincronizada" sin recargar. Para publicarlo en
+se ve pasar de "En cola" a "Sincronizada" sin recargar.
+
+Cualquiera puede ver activos, órdenes y el estado de los servicios. Para
+actuar, el operador inicia sesión con el id y el secreto de uno de los
+clientes de `Auth:Clients`, y el panel muestra solo lo que permite su token:
+`asset-admin` registra activos; `erp-integration` crea y completa órdenes, y
+ve la cola de sincronización y los envíos de cada orden con su código de
+idempotencia. El secreto se envía una sola vez a `/auth/token` y el token
+vive solo en memoria: no se guarda en el navegador y se pierde al recargar. Para publicarlo en
 otro dominio, la dirección de la API se define al compilar con
 `VITE_API_BASE_URL`, y ese dominio se agrega a `Cors:AllowedOrigins` en la
 API.

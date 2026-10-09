@@ -74,7 +74,11 @@ sin esperar tiempo real salvo donde se prueba backoff de verdad:
 ## Panel web
 
 Pruebas con Vitest y Testing Library en `src/AssetSync.Web` (`npm test`):
-cómo se clasifica cada orden en el camino al ERP y que la tubería de la
-línea de sincronización solo se anima cuando llega una orden a una
-estación, nunca en la primera carga. El CI además revisa el código con
+cómo se clasifica cada orden en el camino al ERP; que la tubería de la línea
+de sincronización solo se anima cuando llega una orden a una estación, nunca
+en la primera carga; el inicio de sesión del operador (credenciales
+correctas, secreto equivocado, cierre de sesión); que cada acción envía el
+token y explica un permiso faltante; los errores de validación de la API
+junto a su campo; y la cola y el historial de envíos según el permiso del
+operador. El CI además revisa el código con
 oxlint y compila el panel con TypeScript en modo estricto.

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useAssetCodes, useWorkOrders } from '../api/queries'
 import { LoadError } from '../components/LoadError'
 import { Pager } from '../components/Pager'
-import { CompleteOrderButton } from '../components/CompleteOrderButton'
+import { OrderActions } from '../components/OrderActions'
+import { SyncHistoryDialog } from '../components/SyncHistoryDialog'
 import { NewWorkOrderForm } from '../components/NewWorkOrderForm'
 import { WorkOrdersTable } from '../components/WorkOrdersTable'
 import { useOperatorSession } from '../session/useOperatorSession'
@@ -15,6 +16,8 @@ export function WorkOrdersPage() {
   const assetCodes = useAssetCodes()
   const { can } = useOperatorSession()
   const canWrite = can('workorders.write')
+  const hasActions = canWrite || can('integration.read')
+  const [historyOf, setHistoryOf] = useState<number | null>(null)
   const [created, setCreated] = useState<number | null>(null)
 
   if (orders.isError) return <LoadError what="las órdenes de trabajo" onRetry={() => orders.refetch()} />
@@ -47,9 +50,10 @@ export function WorkOrdersPage() {
           orders={data?.items ?? []}
           assetCodes={assetCodes}
           showCreated
-          actions={canWrite ? (order) => <CompleteOrderButton order={order} /> : undefined}
+          actions={hasActions ? (order) => <OrderActions order={order} onShowHistory={setHistoryOf} /> : undefined}
         />
       )}
+      <SyncHistoryDialog workOrderId={historyOf} onClose={() => setHistoryOf(null)} />
       {data && (
         <Pager page={data.page} totalPages={data.totalPages} totalCount={data.totalCount} onChange={setPage} />
       )}

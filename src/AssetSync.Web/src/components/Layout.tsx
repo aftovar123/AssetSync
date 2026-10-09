@@ -25,6 +25,7 @@ export function Layout() {
           <NavLink to="/" end>Resumen</NavLink>
           <NavLink to="/ordenes">Órdenes de trabajo</NavLink>
           <NavLink to="/activos">Activos</NavLink>
+          <NavLink to="/cola">Cola de sincronización</NavLink>
         </nav>
         <div className="masthead__side">
           <p className={`lamp lamp--${status.toLowerCase()}`} role="status">

@@ -1,7 +1,7 @@
 // Typed access to the AssetSync API: the only place that knows URLs and
 // fetch. Public reads need nothing; the operator's actions send the token
 // from the in-memory session as a Bearer header.
-import type { Asset, HealthReport, Paged, Scope, WorkOrder } from '../domain/models'
+import type { Asset, HealthReport, IntegrationLog, OutboxMessage, Paged, Scope, WorkOrder } from '../domain/models'
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
@@ -14,12 +14,20 @@ export class ApiError extends Error {
   }
 }
 
-async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`${baseUrl}${path}`, { signal, headers: { Accept: 'application/json' } })
+const statusMessages: Record<number, string> = {
+  401: 'Tu sesión de operador expiró. Inicia sesión de nuevo.',
+  403: 'Tu cliente no tiene permiso para esta acción.',
+  404: 'El registro ya no existe.',
+}
+
+async function get<T>(path: string, signal?: AbortSignal, accessToken?: string): Promise<T> {
+  const headers: Record<string, string> = { Accept: 'application/json' }
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`
+  const response = await fetch(`${baseUrl}${path}`, { signal, headers })
   // /health answers 503 with a full report when something is down; that is
   // still a report worth showing, not a failed request.
   if (!response.ok && !(path === '/health' && response.status === 503)) {
-    throw new ApiError(response.status, `La API respondió ${response.status} en ${path}.`)
+    throw new ApiError(response.status, statusMessages[response.status] ?? `La API respondió ${response.status} en ${path}.`)
   }
   return (await response.json()) as T
 }
@@ -34,11 +42,6 @@ export class ValidationError extends ApiError {
   }
 }
 
-const statusMessages: Record<number, string> = {
-  401: 'Tu sesión de operador expiró. Inicia sesión de nuevo.',
-  403: 'Tu cliente no tiene permiso para esta acción.',
-  404: 'El registro ya no existe.',
-}
 
 /** An operator action: sends the session token and explains failures. */
 async function send<T>(path: string, accessToken: string, body?: unknown): Promise<T | undefined> {
@@ -105,6 +108,10 @@ export const api = {
     get<Paged<Asset>>(`/assets?page=${page}&pageSize=${pageSize}`, signal),
   workOrders: (page: number, pageSize: number, signal?: AbortSignal) =>
     get<Paged<WorkOrder>>(`/work-orders?page=${page}&pageSize=${pageSize}`, signal),
+  outbox: (accessToken: string, page: number, pageSize: number, signal?: AbortSignal) =>
+    get<Paged<OutboxMessage>>(`/outbox?page=${page}&pageSize=${pageSize}`, signal, accessToken),
+  integrationLogs: (accessToken: string, workOrderId: number, signal?: AbortSignal) =>
+    get<Paged<IntegrationLog>>(`/work-orders/${workOrderId}/integration-logs?pageSize=100`, signal, accessToken),
   createAsset: async (accessToken: string, asset: { code: string; name: string; location: string | null }) =>
     (await send<Asset>('/assets', accessToken, asset))!,
   createWorkOrder: async (accessToken: string, order: { assetId: number; description: string }) =>

@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { AssetsPage } from './pages/AssetsPage'
 import { OverviewPage } from './pages/OverviewPage'
+import { SyncQueuePage } from './pages/SyncQueuePage'
 import { WorkOrdersPage } from './pages/WorkOrdersPage'
 import { OperatorSessionProvider } from './session/OperatorSessionProvider'
 
@@ -24,6 +25,7 @@ export default function App() {
               <Route index element={<OverviewPage />} />
               <Route path="ordenes" element={<WorkOrdersPage />} />
               <Route path="activos" element={<AssetsPage />} />
+              <Route path="cola" element={<SyncQueuePage />} />
             </Route>
           </Routes>
         </BrowserRouter>

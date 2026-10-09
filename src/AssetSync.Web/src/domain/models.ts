@@ -50,3 +50,27 @@ export interface OperatorSession {
   accessToken: string
   expiresAt: number
 }
+
+export type OutboxStatus = 'Pending' | 'Processing' | 'Processed' | 'Failed'
+
+/** One pending notice to the ERP, written in the same transaction that completed the order. */
+export interface OutboxMessage {
+  id: number
+  workOrderId: number
+  createdAt: string
+  claimedAt: string | null
+  processedAt: string | null
+  attempts: number
+  lastError: string | null
+  status: OutboxStatus
+}
+
+/** One attempt to send a work order to the ERP, with the idempotency code it carried. */
+export interface IntegrationLog {
+  id: number
+  workOrderId: number
+  submissionCode: string
+  sent: boolean
+  attemptedAt: string
+  errorMessage: string | null
+}

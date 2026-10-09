@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { HealthStatus } from '../domain/models'
 import { useAssetCodes, useHealth, useWorkOrders } from '../api/queries'
 import { LoadError } from '../components/LoadError'
 import { SyncLine } from '../components/SyncLine'
-import { CompleteOrderButton } from '../components/CompleteOrderButton'
+import { OrderActions } from '../components/OrderActions'
+import { SyncHistoryDialog } from '../components/SyncHistoryDialog'
 import { WorkOrdersTable } from '../components/WorkOrdersTable'
 import { useOperatorSession } from '../session/useOperatorSession'
 import { countByStage } from '../domain/sync'
@@ -27,6 +29,8 @@ export function OverviewPage() {
   const health = useHealth()
   const assetCodes = useAssetCodes()
   const { can } = useOperatorSession()
+  const hasActions = can('workorders.write') || can('integration.read')
+  const [historyOf, setHistoryOf] = useState<number | null>(null)
 
   if (orders.isError) return <LoadError what="las órdenes de trabajo" onRetry={() => orders.refetch()} />
 
@@ -51,9 +55,10 @@ export function OverviewPage() {
             <WorkOrdersTable
               orders={items.slice(0, 8)}
               assetCodes={assetCodes}
-              actions={can('workorders.write') ? (order) => <CompleteOrderButton order={order} /> : undefined}
+              actions={hasActions ? (order) => <OrderActions order={order} onShowHistory={setHistoryOf} /> : undefined}
             />
           )}
+          <SyncHistoryDialog workOrderId={historyOf} onClose={() => setHistoryOf(null)} />
         </section>
 
         <section className="panel" aria-labelledby="services-title">

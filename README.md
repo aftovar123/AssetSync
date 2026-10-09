@@ -23,7 +23,7 @@ inactividad puede tardar unos segundos mientras la base de datos despierta.
 | Seguridad | OAuth2 client credentials, JWT con un scope por área, rate limiting | [Autenticación](docs/authentication.md) |
 | Observabilidad | OpenTelemetry → Application Insights, trazas y métricas propias, Serilog | [Observabilidad](docs/observability.md) |
 | Infraestructura | Azure App Service + Azure SQL descritos con **Bicep**, despliegue por OIDC sin secretos | [Infraestructura](docs/infrastructure.md) |
-| Frontend | Panel de operación en React + TypeScript que muestra la sincronización en vivo | [Desarrollo local](docs/local-development.md#panel-web) |
+| Frontend | Panel de operación en React + TypeScript: la sincronización en vivo y, con sesión de operador, crear y completar órdenes, registrar activos, la cola y el historial de envíos | [Desarrollo local](docs/local-development.md#panel-web) |
 | Pruebas y CI/CD | 129 tests de la API, con integración en Testcontainers contra los dos motores, y pruebas del panel, en cada push | [Pruebas](docs/testing.md) |
 
 ## Arquitectura
