@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import { useAssets } from '../api/queries'
 import { LoadError } from '../components/LoadError'
+import { NewAssetForm } from '../components/NewAssetForm'
 import { Pager } from '../components/Pager'
+import { useOperatorSession } from '../session/useOperatorSession'
 
 const PAGE_SIZE = 20
 
 export function AssetsPage() {
   const [page, setPage] = useState(1)
   const assets = useAssets(page, PAGE_SIZE)
+  const { can } = useOperatorSession()
+  const [created, setCreated] = useState<string | null>(null)
 
   if (assets.isError) return <LoadError what="los activos" onRetry={() => assets.refetch()} />
 
@@ -18,6 +22,12 @@ export function AssetsPage() {
       <div className="panel__header">
         <h1 id="assets-title">Activos</h1>
       </div>
+      {can('assets.write') && <NewAssetForm onCreated={setCreated} />}
+      {created && (
+        <p className="notice" role="status">
+          Activo {created} registrado.
+        </p>
+      )}
       {data && data.items.length === 0 ? (
         <p className="empty">Todavía no hay activos registrados.</p>
       ) : (

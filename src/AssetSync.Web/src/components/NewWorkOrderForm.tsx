@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { ValidationError } from '../api/client'
 import { useCreateWorkOrder } from '../api/mutations'
 import { useAssets } from '../api/queries'
+import { FieldErrors } from './FieldErrors'
 
 /**
  * Opens a work order on an asset. The asset is picked by its code, so the
@@ -70,9 +71,4 @@ export function NewWorkOrderForm({ onCreated }: { onCreated: (id: number) => voi
       </button>
     </form>
   )
-}
-
-export function FieldErrors({ messages }: { messages?: string[] }) {
-  if (!messages?.length) return null
-  return <small className="field__error">{messages.join(' ')}</small>
 }

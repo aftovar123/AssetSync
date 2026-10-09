@@ -25,6 +25,10 @@ function useOperatorAction<TInput, TResult>(
   })
 }
 
+export function useCreateAsset() {
+  return useOperatorAction(api.createAsset, ['assets'])
+}
+
 export function useCreateWorkOrder() {
   return useOperatorAction(api.createWorkOrder, ['work-orders'])
 }

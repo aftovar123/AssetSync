@@ -105,6 +105,8 @@ export const api = {
     get<Paged<Asset>>(`/assets?page=${page}&pageSize=${pageSize}`, signal),
   workOrders: (page: number, pageSize: number, signal?: AbortSignal) =>
     get<Paged<WorkOrder>>(`/work-orders?page=${page}&pageSize=${pageSize}`, signal),
+  createAsset: async (accessToken: string, asset: { code: string; name: string; location: string | null }) =>
+    (await send<Asset>('/assets', accessToken, asset))!,
   createWorkOrder: async (accessToken: string, order: { assetId: number; description: string }) =>
     (await send<WorkOrder>('/work-orders', accessToken, order))!,
   completeWorkOrder: async (accessToken: string, id: number) => {
