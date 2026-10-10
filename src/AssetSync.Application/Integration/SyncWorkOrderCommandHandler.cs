@@ -24,7 +24,7 @@ public class SyncWorkOrderCommandHandler(
     public async Task<SyncWorkOrderResult> Handle(SyncWorkOrderCommand request, CancellationToken cancellationToken)
     {
         var workOrder = await repository.GetByIdAsync(request.WorkOrderId, cancellationToken)
-            ?? throw new NotFoundException($"Work order {request.WorkOrderId} not found.");
+            ?? throw new NotFoundException($"La orden de trabajo {request.WorkOrderId} no existe.");
 
         // Already synced: don't resend — this is the duplicate-prevention check.
         if (workOrder.IsSynced)

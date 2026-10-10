@@ -10,8 +10,9 @@ public class CreateWorkOrderCommandValidator : AbstractValidator<CreateWorkOrder
         RuleFor(x => x.AssetId)
             .GreaterThan(0)
             .MustAsync(assetRepository.ExistsAsync)
-            .WithMessage(x => $"Asset {x.AssetId} does not exist.");
+            .WithMessage(x => $"El activo {x.AssetId} no existe.")
+            .WithName("Activo");
 
-        RuleFor(x => x.Description).NotEmpty().MaximumLength(500);
+        RuleFor(x => x.Description).NotEmpty().MaximumLength(500).WithName("Descripción");
     }
 }

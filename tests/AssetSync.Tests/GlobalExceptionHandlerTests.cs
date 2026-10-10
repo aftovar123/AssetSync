@@ -23,7 +23,7 @@ public class GlobalExceptionHandlerTests
     public async Task TryHandleAsync_ValidationException_Writes400WithFieldErrors()
     {
         var context = CreateContext(out var body);
-        var exception = new ValidationException([new ValidationFailure("Code", "'Code' no debería estar vacío.")]);
+        var exception = new ValidationException([new ValidationFailure("Code", "'Código' no debería estar vacío.")]);
 
         var handled = await _handler.TryHandleAsync(context, exception, CancellationToken.None);
 
@@ -37,14 +37,14 @@ public class GlobalExceptionHandlerTests
     public async Task TryHandleAsync_NotFoundException_Writes404WithMessage()
     {
         var context = CreateContext(out var body);
-        var exception = new NotFoundException("Work order 99 not found.");
+        var exception = new NotFoundException("La orden de trabajo 99 no existe.");
 
         var handled = await _handler.TryHandleAsync(context, exception, CancellationToken.None);
 
         Assert.True(handled);
         Assert.Equal(StatusCodes.Status404NotFound, context.Response.StatusCode);
         var problem = await ReadBody<ProblemDetails>(body);
-        Assert.Equal("Work order 99 not found.", problem.Title);
+        Assert.Equal("La orden de trabajo 99 no existe.", problem.Title);
     }
 
     [Fact]

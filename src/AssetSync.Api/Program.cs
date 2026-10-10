@@ -19,6 +19,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Scalar.AspNetCore;
 using Serilog;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -76,6 +77,11 @@ builder.Services.AddMediatR(cfg =>
     cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
 });
 builder.Services.AddValidatorsFromAssembly(typeof(AssetSync.Application.AssemblyMarker).Assembly);
+// FluentValidation picks its built-in messages ("no debería estar vacío")
+// from the server's culture, so the same request answered in Spanish on a
+// developer's machine and in English on the Linux App Service. Pinning the
+// culture makes every environment answer in Spanish, like the panel.
+ValidatorOptions.Global.LanguageManager.Culture = new CultureInfo("es");
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();

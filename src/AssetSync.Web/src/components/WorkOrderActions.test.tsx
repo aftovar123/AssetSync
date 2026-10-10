@@ -72,7 +72,7 @@ describe('NewWorkOrderForm', () => {
   it('shows the API validation message next to its field', async () => {
     mockFetch(
       { status: 200, body: assetsPage },
-      { status: 400, body: { errors: { Description: ["'Description' no debería estar vacío."] } } },
+      { status: 400, body: { errors: { Description: ["'Descripción' no debería estar vacío."] } } },
     )
     renderWithOperator(<NewWorkOrderForm onCreated={vi.fn()} />, ['workorders.write'])
 
@@ -80,6 +80,6 @@ describe('NewWorkOrderForm', () => {
     await userEvent.type(screen.getByLabelText('Trabajo a realizar'), ' x ')
     await userEvent.click(screen.getByRole('button', { name: 'Crear orden' }))
 
-    expect(await screen.findByText("'Description' no debería estar vacío.")).toBeInTheDocument()
+    expect(await screen.findByText("'Descripción' no debería estar vacío.")).toBeInTheDocument()
   })
 })

@@ -6,6 +6,6 @@ public class CompleteWorkOrderCommandValidator : AbstractValidator<CompleteWorkO
 {
     public CompleteWorkOrderCommandValidator()
     {
-        RuleFor(x => x.WorkOrderId).GreaterThan(0);
+        RuleFor(x => x.WorkOrderId).GreaterThan(0).WithName("Orden de trabajo");
     }
 }

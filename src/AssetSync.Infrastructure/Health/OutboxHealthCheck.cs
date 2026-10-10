@@ -18,7 +18,7 @@ public class OutboxHealthCheck(AssetSyncDbContext db) : IHealthCheck
             .CountAsync(m => m.Status == OutboxMessageStatus.Failed, cancellationToken);
 
         return failedCount > 0
-            ? HealthCheckResult.Degraded($"{failedCount} outbox message(s) exhausted their retries and need manual review.")
-            : HealthCheckResult.Healthy("No dead-lettered outbox messages.");
+            ? HealthCheckResult.Degraded($"{failedCount} aviso(s) al ERP agotaron sus reintentos y requieren revisión manual.")
+            : HealthCheckResult.Healthy("Ningún aviso al ERP quedó fallido.");
     }
 }

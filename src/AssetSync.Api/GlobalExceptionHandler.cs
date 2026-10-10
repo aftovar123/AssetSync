@@ -46,7 +46,7 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
                 await httpContext.Response.WriteAsJsonAsync(new ProblemDetails
                 {
                     Status = badRequest.StatusCode,
-                    Title = "The request body or parameters could not be read.",
+                    Title = "No se pudo leer el cuerpo o los parámetros de la petición.",
                 }, cancellationToken);
                 return true;
 
@@ -56,7 +56,7 @@ public class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IE
                 await httpContext.Response.WriteAsJsonAsync(new ProblemDetails
                 {
                     Status = StatusCodes.Status500InternalServerError,
-                    Title = "An unexpected error occurred.",
+                    Title = "Ocurrió un error inesperado.",
                 }, cancellationToken);
                 return true;
         }

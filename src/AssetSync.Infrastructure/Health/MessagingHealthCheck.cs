@@ -16,18 +16,18 @@ public class MessagingHealthCheck(IConfiguration configuration) : IHealthCheck
         var connectionString = configuration["RabbitMq:ConnectionString"];
         if (string.IsNullOrWhiteSpace(connectionString))
         {
-            return HealthCheckResult.Degraded("RabbitMq:ConnectionString is not configured.");
+            return HealthCheckResult.Degraded("RabbitMQ no está configurado (falta RabbitMq:ConnectionString).");
         }
 
         try
         {
             var factory = new ConnectionFactory { Uri = new Uri(connectionString) };
             await using var connection = await factory.CreateConnectionAsync(cancellationToken);
-            return HealthCheckResult.Healthy("RabbitMQ reachable.");
+            return HealthCheckResult.Healthy("RabbitMQ disponible.");
         }
         catch (Exception ex)
         {
-            return HealthCheckResult.Degraded("Cannot reach RabbitMQ.", ex);
+            return HealthCheckResult.Degraded("No se puede conectar con RabbitMQ.", ex);
         }
     }
 }

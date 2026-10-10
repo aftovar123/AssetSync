@@ -14,8 +14,9 @@ public class CreateAssetCommandValidator : AbstractValidator<CreateAssetCommand>
             .NotEmpty()
             .MaximumLength(50)
             .MustAsync(async (code, ct) => !await assetRepository.CodeExistsAsync(code, ct))
-            .WithMessage(x => $"An asset with code {x.Code} already exists.");
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Location).MaximumLength(200);
+            .WithMessage(x => $"Ya existe un activo con el código {x.Code}.")
+            .WithName("Código");
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(200).WithName("Nombre");
+        RuleFor(x => x.Location).MaximumLength(200).WithName("Ubicación");
     }
 }

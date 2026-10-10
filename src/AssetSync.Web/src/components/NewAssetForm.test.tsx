@@ -22,13 +22,13 @@ describe('NewAssetForm', () => {
   })
 
   it('shows that the code is already taken', async () => {
-    mockFetch({ status: 400, body: { errors: { Code: ['An asset with code BOMBA-001 already exists.'] } } })
+    mockFetch({ status: 400, body: { errors: { Code: ['Ya existe un activo con el código BOMBA-001.'] } } })
     renderWithOperator(<NewAssetForm onCreated={vi.fn()} />, ['assets.write'])
 
     await userEvent.type(screen.getByLabelText('Código'), 'BOMBA-001')
     await userEvent.type(screen.getByLabelText('Nombre'), 'Otra bomba')
     await userEvent.click(screen.getByRole('button', { name: 'Registrar activo' }))
 
-    expect(await screen.findByText('An asset with code BOMBA-001 already exists.')).toBeInTheDocument()
+    expect(await screen.findByText('Ya existe un activo con el código BOMBA-001.')).toBeInTheDocument()
   })
 })

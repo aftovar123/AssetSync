@@ -9,7 +9,7 @@ public class DatabaseHealthCheck(AssetSyncDbContext db) : IHealthCheck
     {
         var canConnect = await db.Database.CanConnectAsync(cancellationToken);
         return canConnect
-            ? HealthCheckResult.Healthy("Database reachable.")
-            : HealthCheckResult.Unhealthy("Cannot reach the database.");
+            ? HealthCheckResult.Healthy("Base de datos disponible.")
+            : HealthCheckResult.Unhealthy("No se puede conectar con la base de datos.");
     }
 }

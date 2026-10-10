@@ -32,7 +32,7 @@ public class CreateAssetCommandValidatorTests
 
         var result = await _validator.TestValidateAsync(new CreateAssetCommand("AC-001", "Aire acondicionado", null));
 
-        result.ShouldHaveValidationErrorFor(x => x.Code).WithErrorMessage("An asset with code AC-001 already exists.");
+        result.ShouldHaveValidationErrorFor(x => x.Code).WithErrorMessage("Ya existe un activo con el código AC-001.");
     }
 
     [Fact]

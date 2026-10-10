@@ -50,8 +50,10 @@ public class PaginationAndValidationTests(AssetSyncApiFactory factory)
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = (await response.ReadJsonAsync()).GetProperty("errors");
-        Assert.True(errors.TryGetProperty("Code", out _));
-        Assert.True(errors.TryGetProperty("Name", out _));
+        // Spanish whatever the culture of the machine running the API (the
+        // CI runner is English): the culture is pinned in Program.
+        Assert.Equal("'Código' no debería estar vacío.", errors.GetProperty("Code")[0].GetString());
+        Assert.Equal("'Nombre' no debería estar vacío.", errors.GetProperty("Name")[0].GetString());
     }
 
     [Fact]
@@ -64,7 +66,8 @@ public class PaginationAndValidationTests(AssetSyncApiFactory factory)
         var response = await admin.PostAsJsonAsync("/assets", new { code, name = "Second" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.True((await response.ReadJsonAsync()).GetProperty("errors").TryGetProperty("Code", out _));
+        var messages = (await response.ReadJsonAsync()).GetProperty("errors").GetProperty("Code");
+        Assert.Equal($"Ya existe un activo con el código {code}.", messages[0].GetString());
     }
 
     [Fact]

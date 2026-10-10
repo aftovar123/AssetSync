@@ -80,15 +80,18 @@ Un `GlobalExceptionHandler` (`IExceptionHandler`) traduce eso a respuestas
 HTTP: `ValidationException` → `400` con el detalle por campo,
 `NotFoundException` → `404`, una petición que ASP.NET Core no pudo leer (JSON
 mal formado, un texto donde va un número) → `400`, y cualquier otra
-excepción → `500` genérico sin filtrar detalles internos:
+excepción → `500` genérico sin filtrar detalles internos. Los mensajes están en español en cualquier
+servidor: FluentValidation elige sus mensajes según el idioma del sistema, así
+que el idioma se fija al arrancar para que Azure (Linux en inglés) responda
+igual que una máquina de desarrollo:
 
 ```bash
 $ curl -X POST http://localhost:5188/work-orders -d '{"assetId":9999,"description":""}'
-{"errors":{"AssetId":["Asset 9999 does not exist."],"Description":["'Description' no debería estar vacío."]}}
+{"errors":{"AssetId":["El activo 9999 no existe."],"Description":["'Descripción' no debería estar vacío."]}}
 # HTTP 400
 
 $ curl -X POST http://localhost:5188/work-orders/99999/complete
-{"title":"Work order 99999 not found.","status":404}
+{"title":"La orden de trabajo 99999 no existe.","status":404}
 ```
 
 ## Acceso a datos
@@ -131,9 +134,9 @@ nunca revelaría.
 
 ```json
 {"status":"Healthy","checks":[
-  {"name":"database","status":"Healthy","description":"Database reachable."},
-  {"name":"outbox","status":"Healthy","description":"No dead-lettered outbox messages."},
-  {"name":"messaging","status":"Healthy","description":"RabbitMQ reachable."}
+  {"name":"database","status":"Healthy","description":"Base de datos disponible."},
+  {"name":"outbox","status":"Healthy","description":"Ningún aviso al ERP quedó fallido."},
+  {"name":"messaging","status":"Healthy","description":"RabbitMQ disponible."}
 ]}
 ```
 
