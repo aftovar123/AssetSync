@@ -80,5 +80,9 @@ en la primera carga; el inicio de sesión del operador (credenciales
 correctas, secreto equivocado, cierre de sesión); que cada acción envía el
 token y explica un permiso faltante; los errores de validación de la API
 junto a su campo; y la cola y el historial de envíos según el permiso del
-operador. El CI además revisa el código con
+operador. Las pantallas completas (Resumen, Órdenes, Activos) se prueban
+contra una API simulada que responde según la ruta: los conteos de la línea
+de sincronización, el código del activo en lugar de su id, el cambio de
+página, qué ve un visitante frente a cada tipo de operador, los mensajes
+cuando no hay datos y el reintento tras un error de carga. El CI además revisa el código con
 oxlint y compila el panel con TypeScript en modo estricto.
