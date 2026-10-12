@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useAssets } from '../api/queries'
+import { EmptyState } from '../components/EmptyState'
 import { LoadError } from '../components/LoadError'
+import { Loading } from '../components/Loading'
 import { NewAssetForm } from '../components/NewAssetForm'
 import { Pager } from '../components/Pager'
 import { useOperatorSession } from '../session/useOperatorSession'
@@ -28,8 +30,16 @@ export function AssetsPage() {
           Activo {created} registrado.
         </p>
       )}
-      {data && data.items.length === 0 ? (
-        <p className="empty">Todavía no hay activos registrados.</p>
+      {!data ? (
+        <Loading what="los activos" />
+      ) : data.items.length === 0 ? (
+        <EmptyState
+          message="Todavía no hay activos registrados."
+          firstItem="el primer activo"
+          createScope="assets.write"
+          createHint="Registra el primero con el formulario de arriba."
+          createdBy="asset-admin"
+        />
       ) : (
         <table className="data-table">
           <thead>
@@ -40,7 +50,7 @@ export function AssetsPage() {
             </tr>
           </thead>
           <tbody>
-            {data?.items.map((asset) => (
+            {data.items.map((asset) => (
               <tr key={asset.id}>
                 <td><span className="tag-code">{asset.code}</span></td>
                 <td>{asset.name}</td>

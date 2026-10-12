@@ -15,14 +15,18 @@ interface WorkOrdersTableProps {
 
 export function WorkOrdersTable({ orders, assetCodes, showCreated = false, actions }: WorkOrdersTableProps) {
   return (
-    <table className="data-table">
+    <table className="data-table orders-table">
       <thead>
         <tr>
           <th scope="col">Orden</th>
           <th scope="col">Activo</th>
           <th scope="col">Descripción</th>
           <th scope="col">Estado</th>
-          {showCreated && <th scope="col">Creada</th>}
+          {showCreated && (
+            <th scope="col" className="col-created">
+              Creada
+            </th>
+          )}
           <th scope="col">Completada</th>
           {actions && (
             <th scope="col">
@@ -34,17 +38,20 @@ export function WorkOrdersTable({ orders, assetCodes, showCreated = false, actio
       <tbody>
         {orders.map((order) => (
           <tr key={order.id}>
-            <td className="num">{order.id}</td>
-            <td>
+            <td className="num col-id">{order.id}</td>
+            <td className="col-asset">
               <span className="tag-code">{assetCodes.get(order.assetId) ?? order.assetId}</span>
             </td>
-            <td>{order.description}</td>
-            <td>
+            <td className="col-description">{order.description}</td>
+            <td className="col-stage">
               <StageTag order={order} />
             </td>
-            {showCreated && <td className="when">{formatDateTime(order.createdAt)}</td>}
-            <td className="when">{formatDateTime(order.completedAt)}</td>
-            {actions && <td className="actions">{actions(order)}</td>}
+            {showCreated && <td className="when col-created">{formatDateTime(order.createdAt)}</td>}
+            <td className="when col-completed">
+              <span className="visually-hidden">Completada: </span>
+              {formatDateTime(order.completedAt)}
+            </td>
+            {actions && <td className="actions col-actions">{actions(order)}</td>}
           </tr>
         ))}
       </tbody>

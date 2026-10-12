@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useAssetCodes, useWorkOrders } from '../api/queries'
+import { EmptyState } from '../components/EmptyState'
 import { LoadError } from '../components/LoadError'
+import { Loading } from '../components/Loading'
 import { Pager } from '../components/Pager'
 import { OrderActions } from '../components/OrderActions'
 import { SyncHistoryDialog } from '../components/SyncHistoryDialog'
@@ -43,11 +45,19 @@ export function WorkOrdersPage() {
           Orden {created} creada.
         </p>
       )}
-      {data && data.items.length === 0 ? (
-        <p className="empty">Todavía no hay órdenes de trabajo.</p>
+      {!data ? (
+        <Loading what="las órdenes de trabajo" />
+      ) : data.items.length === 0 ? (
+        <EmptyState
+          message="Todavía no hay órdenes de trabajo."
+          firstItem="la primera orden"
+          createScope="workorders.write"
+          createHint="Crea la primera con el formulario de arriba."
+          createdBy="erp-integration"
+        />
       ) : (
         <WorkOrdersTable
-          orders={data?.items ?? []}
+          orders={data.items}
           assetCodes={assetCodes}
           showCreated
           actions={hasActions ? (order) => <OrderActions order={order} onShowHistory={setHistoryOf} /> : undefined}

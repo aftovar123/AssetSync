@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useOutbox } from '../api/queries'
 import { LoadError } from '../components/LoadError'
+import { Loading } from '../components/Loading'
 import { Pager } from '../components/Pager'
 import type { OutboxStatus } from '../domain/models'
 import { formatDateTime } from '../lib/format'
@@ -46,7 +47,9 @@ export function SyncQueuePage() {
         <h1 id="queue-title">Cola de sincronización</h1>
         <p className="panel__hint">Cada aviso al ERP, del más reciente al más antiguo. Se actualiza cada 5 segundos.</p>
       </div>
-      {data && data.items.length === 0 ? (
+      {!data ? (
+        <Loading what="la cola de sincronización" />
+      ) : data.items.length === 0 ? (
         <p className="empty">La cola está vacía: todavía no se ha completado ninguna orden.</p>
       ) : (
         <table className="data-table">
@@ -62,7 +65,7 @@ export function SyncQueuePage() {
             </tr>
           </thead>
           <tbody>
-            {data?.items.map((message) => (
+            {data.items.map((message) => (
               <tr key={message.id}>
                 <td className="num">{message.id}</td>
                 <td className="num">{message.workOrderId}</td>
