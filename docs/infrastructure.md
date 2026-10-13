@@ -29,6 +29,9 @@ Bicep, en vez de depender de clics en el portal:
 - Application Insights sobre un área de trabajo con límite diario de ingesta.
 - La identidad administrada con la que GitHub Actions despliega por OIDC, con
   permiso solo sobre la web app.
+- Azure Static Web Apps, plan gratuito, para el panel de operación en React.
+  Su dirección se agrega sola a los orígenes que la API permite por CORS,
+  en lugar de copiarla a mano.
 
 ```bash
 infra/deploy.sh           # what-if: muestra qué cambiaría, sin tocar nada

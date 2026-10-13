@@ -8,6 +8,8 @@ param sqlServerName = 'assetsync-server-andres'
 param sqlDatabaseName = 'assetsyncdb'
 param appInsightsName = 'assetsync-insights'
 param deployIdentityName = 'oidc-msi-90b6'
+param panelName = 'assetsync-panel-andres'
+param panelLocation = 'westus2'
 
 param workspaceName = 'DefaultWorkspace-62a02b56-d1dd-4fd3-8540-77fbfb6a1170-USW3'
 param workspaceResourceGroup = 'DefaultResourceGroup-USW3'

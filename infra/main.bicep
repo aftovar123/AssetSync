@@ -14,6 +14,10 @@ param sqlServerName string
 param sqlDatabaseName string
 param appInsightsName string
 param deployIdentityName string
+param panelName string
+
+@description('Static Web Apps is offered in fewer regions than App Service; the panel is served from a global edge network either way.')
+param panelLocation string
 
 param workspaceName string
 param workspaceResourceGroup string
@@ -160,6 +164,20 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   }
 }
 
+// ---------- Operations panel (React) ----------
+
+// Free plan. The site is not linked to the repository here: the panel's own
+// GitHub Actions workflow builds it and uploads it with the deployment token.
+resource panel 'Microsoft.Web/staticSites@2023-12-01' = {
+  name: panelName
+  location: panelLocation
+  sku: {
+    name: 'Free'
+    tier: 'Free'
+  }
+  properties: {}
+}
+
 // The whole settings list is replaced on every deploy, so every setting the
 // app needs is declared here. The App Insights connection string comes from
 // the resource itself instead of being pasted by hand.
@@ -168,6 +186,9 @@ resource appSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   name: 'appsettings'
   properties: union({
     APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
+    // The browser only lets the panel call the API if the API allows the
+    // panel's address; it comes from the resource, not typed by hand.
+    Cors__AllowedOrigins__0: 'https://${panel.properties.defaultHostname}'
     Jwt__SigningKey: jwtSigningKey
     RabbitMq__ConnectionString: rabbitMqConnectionString
   }, authClientSettings)
@@ -216,3 +237,4 @@ resource deployRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 
 output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
+output panelUrl string = 'https://${panel.properties.defaultHostname}'
