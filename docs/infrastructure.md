@@ -46,3 +46,15 @@ infra/deploy.sh --apply   # vista previa y, tras confirmar, despliega
   Application Insights sale del propio recurso. Pegarla a mano mal fue la
   causa de una caída real (ver [Observabilidad](observability.md)).
 - **Validado en CI:** cada push compila las plantillas Bicep.
+
+## Panel de operación
+
+El flujo `Deploy panel to Azure Static Web Apps` corre cuando un push a
+`main` cambia `src/AssetSync.Web`: ejecuta las pruebas, compila el panel con
+la dirección de la API en `VITE_API_BASE_URL` y sube `dist` a la Static Web
+App. Se autentica con el token de despliegue de esa Static Web App, guardado
+como secreto `AZURE_STATIC_WEB_APPS_API_TOKEN` en GitHub.
+
+`public/staticwebapp.config.json` redirige cualquier ruta del panel (por
+ejemplo `/ordenes`) a `index.html`, para que recargar o abrir un enlace
+directo no devuelva 404, y agrega cabeceras de seguridad básicas.
